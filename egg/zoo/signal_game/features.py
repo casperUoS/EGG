@@ -142,3 +142,5 @@ class ImageNetFeat(data.Dataset):
                 self.obj2id[idx_label]["labels"] = labels[i]
                 self.obj2id[idx_label]["ims"] = []
             self.obj2id[idx_label]["ims"].append(i)
+
+
