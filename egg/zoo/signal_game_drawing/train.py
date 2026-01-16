@@ -11,6 +11,8 @@ import torch.nn.functional as F
 import egg.core as core
 from egg.zoo.signal_game.archs import InformedSender, Receiver
 from egg.zoo.signal_game.features import ImageNetFeat, ImagenetLoader
+from egg.zoo.signal_game_drawing.archs import DrawSender, DrawReceiver
+from egg.zoo.signal_game_drawing.wrappers import BezierReinforceWrapper
 
 
 def parse_arguments():
@@ -73,23 +75,15 @@ def loss_nll(
 
 def get_game(opt):
     feat_size = 4096
-    sender = InformedSender(
-        opt.game_size,
-        feat_size,
-        opt.embedding_size,
-        opt.hidden_size,
-        opt.vocab_size,
-        temp=opt.tau_s,
+    sender = DrawSender(
+        feat_size=feat_size,
     )
-    receiver = Receiver(
-        opt.game_size,
-        feat_size,
-        opt.embedding_size,
-        opt.vocab_size,
-        reinforce=(opts.mode == "rf"),
+    receiver = DrawReceiver(
+        game_size=opt.game_size,
+        feat_size=feat_size,
     )
     if opts.mode == "rf":
-        sender = core.ReinforceWrapper(sender)
+        sender = BezierReinforceWrapper(sender)
         receiver = core.ReinforceWrapper(receiver)
         game = core.SymbolGameReinforce(
             sender,
@@ -146,5 +140,31 @@ if __name__ == "__main__":
     )
 
     trainer.train(n_epochs=opts.n_epochs)
+
+    # 1. Run inference on the validation set to get a batch of interactions
+    print("Generating sample sketch...")
+    val_loss, interaction = trainer.eval()
+
+    # 2. Extract the messages (the rendered sketches)
+    # interaction.message contains the tensor of shape (Batch, 28, 28) or (Batch, 1, 28, 28)
+    sketches = interaction.message.detach().cpu()
+
+    # 3. Plot and save one sample
+    import matplotlib.pyplot as plt
+
+    # Pick the first image in the batch
+    sample = sketches[0]
+
+    # Remove the channel dimension if it exists (e.g., convert 1x28x28 to 28x28)
+    if sample.ndim == 3:
+        sample = sample.squeeze(0)
+
+    plt.figure()
+    # Use inverted grayscale (drawing is usually white on black, or vice versa)
+    plt.imshow(sample, cmap='gray', origin='upper')
+    plt.colorbar(label='Pixel Intensity')
+    plt.title("Sample Sketch from Trained Sender")
+
+    plt.show()
 
     core.close()

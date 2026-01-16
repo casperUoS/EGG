@@ -10,7 +10,7 @@ from typing import Callable
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import Categorical
+from torch.distributions import Categorical, MultivariateNormal, Normal, Independent
 
 from .baselines import Baseline, MeanBaseline
 from .interaction import LoggingStrategy
