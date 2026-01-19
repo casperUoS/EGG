@@ -27,7 +27,7 @@ class DrawSender(nn.Module):
         x = x[0] #get target image
         x = torch.relu(self.lin1(x))
         x = self.lin2(x)
-        return torch.sigmoid(x)
+        return x
 
 class DrawReceiver(nn.Module):
     def __init__(self, game_size, feat_size, dropout_rate=0.4, action_dim=2, embedding_size=50, freeze_vgg=True):
@@ -74,9 +74,9 @@ class DrawReceiver(nn.Module):
         emb_s = self.dense1(h_s)
         embd_s = F.relu(emb_s)
         embd_s = self.dropout(embd_s)
-        embd_s = self.dense2(embd_s)
-        embd_s = F.relu(embd_s)
-        embd_s = self.dropout(embd_s)
+        # embd_s = self.dense2(embd_s)
+        # embd_s = F.relu(embd_s)
+        # embd_s = self.dropout(embd_s)
         embd_s = self.denseFinal(embd_s)
         # embd_s is of size batch_size x embedding_size
         embd_s = embd_s.unsqueeze(dim=1)

@@ -165,12 +165,16 @@ class BezierReinforceWrapper(nn.Module):
         entropy = distr.entropy()
 
         if self.training:
-            sample = distr.sample()
+            raw_sample = distr.sample()
         else:
-            sample = mu
+            raw_sample = mu
+
+        sample = torch.sigmoid(raw_sample)
 
         log_prob = distr.log_prob(sample)
 
         sketch = self.paint_multiple_splines(sample)
+
+        print(sample)
 
         return sketch, log_prob, entropy, sample
