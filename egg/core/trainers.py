@@ -162,8 +162,6 @@ class Trainer:
         else:
             self.scaler = None
 
-
-
     def eval(self, data=None):
         mean_loss = 0.0
         interactions = []

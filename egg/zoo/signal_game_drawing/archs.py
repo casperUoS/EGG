@@ -18,15 +18,16 @@ class DrawSender(nn.Module):
         self.feat_size = feat_size
         self.hidden_size = hidden_size
 
-        self.lin1 = nn.Linear(feat_size, hidden_size)
-        self.lin2 = nn.Linear(hidden_size, 7*num_splines)
+        self.lin1 = nn.Linear(feat_size, hidden_size, bias=False)
+        self.bn1 = nn.BatchNorm1d(hidden_size)
+        self.lin2 = nn.Linear(hidden_size, 7*num_splines, bias=False)
 
 
     def forward(self, x, state=None):
         x = x[0] #get target image
         x = torch.relu(self.lin1(x))
         x = self.lin2(x)
-        return x
+        return torch.sigmoid(x)
 
 class DrawReceiver(nn.Module):
     def __init__(self, game_size, feat_size, dropout_rate=0.4, action_dim=2, embedding_size=50, freeze_vgg=True):
@@ -37,10 +38,10 @@ class DrawReceiver(nn.Module):
         self.lin1 = nn.Linear(feat_size, embedding_size, bias=False)
         # self.lin2 = nn.Embedding(vocab_size, embedding_size)
 
-        self.vgg16 = models.vgg16(pretrained=True)
-        if freeze_vgg:
-            for p in self.vgg16.parameters():
-                p.requires_grad = False
+        # self.vgg16 = models.vgg16(pretrained=True)
+        # if freeze_vgg:
+        #     for p in self.vgg16.parameters():
+        #         p.requires_grad = False
 
         self.enc = nn.Sequential(
             nn.AdaptiveAvgPool2d((8, 8)),
@@ -48,12 +49,12 @@ class DrawReceiver(nn.Module):
             nn.Linear(8 * 8 * 256, embedding_size)
         )
 
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=(3, 3), stride=(3, 3))
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3), stride=(3, 3))
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=(3, 3), stride=(3, 3), bias=False)
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3), stride=(3, 3), bias=False)
 
-        self.dense1 = nn.Linear(in_features=576, out_features=128)
-        self.dense2 = nn.Linear(in_features=128, out_features=128)
-        self.denseFinal = nn.Linear(in_features=128, out_features=embedding_size)
+        self.dense1 = nn.Linear(in_features=576, out_features=128, bias=False)
+        self.dense2 = nn.Linear(in_features=128, out_features=128, bias=False)
+        self.denseFinal = nn.Linear(in_features=128, out_features=embedding_size, bias=False)
 
         self.dropout = nn.Dropout(p=dropout_rate)
 

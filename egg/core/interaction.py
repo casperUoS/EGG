@@ -21,6 +21,7 @@ class LoggingStrategy:
     store_message: bool = True
     store_receiver_output: bool = True
     store_message_length: bool = True
+    store_sender_output: bool = True
 
     def filtered_interaction(
         self,
@@ -32,6 +33,7 @@ class LoggingStrategy:
         receiver_output: Optional[torch.Tensor],
         message_length: Optional[torch.Tensor],
         aux: Dict[str, torch.Tensor],
+        sender_output: Optional[torch.Tensor],
     ):
 
         return Interaction(
@@ -43,6 +45,7 @@ class LoggingStrategy:
             receiver_output=receiver_output if self.store_receiver_output else None,
             message_length=message_length if self.store_message_length else None,
             aux=aux,
+            sender_output=sender_output if self.store_sender_output else None,
         )
 
     @classmethod
@@ -62,6 +65,7 @@ class Interaction:
     receiver_input: Optional[torch.Tensor]
     labels: Optional[torch.Tensor]
     aux_input: Optional[Dict[str, torch.Tensor]]
+    sender_output: Optional[torch.Tensor]
 
     # what agents produce
     message: Optional[torch.Tensor]
@@ -118,6 +122,7 @@ class Interaction:
             message_length=_check_cat([x.message_length for x in interactions]),
             receiver_output=_check_cat([x.receiver_output for x in interactions]),
             aux=_combine_aux_dicts(self.aux, other.aux),
+            sender_output=_check_cat([x.sender_output for x in interactions]),
         )
 
     @property
@@ -220,6 +225,7 @@ message=tensor([1., 1.]), receiver_output=tensor([1., 1.]), message_length=None,
             message_length=_check_cat([x.message_length for x in interactions]),
             receiver_output=_check_cat([x.receiver_output for x in interactions]),
             aux=aux,
+            sender_output=_check_cat([x.sender_output for x in interactions]),
         )
 
     @staticmethod

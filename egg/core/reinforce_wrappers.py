@@ -172,7 +172,12 @@ class SymbolGameReinforce(nn.Module):
         )
 
     def forward(self, sender_input, labels, receiver_input=None, aux_input=None):
-        message, sender_log_prob, sender_entropy = self.sender(sender_input, aux_input)
+        sender_out = self.sender(sender_input, aux_input)
+        if len(sender_out) == 3:
+            message, sender_log_prob, sender_entropy = sender_out
+            sender_output = None
+        else:
+            message, sender_log_prob, sender_entropy, sender_output = sender_out
         receiver_output, receiver_log_prob, receiver_entropy = self.receiver(
             message, receiver_input, aux_input
         )
@@ -214,6 +219,7 @@ class SymbolGameReinforce(nn.Module):
             receiver_output=receiver_output.detach(),
             message_length=torch.ones(message.size(0)),
             aux=aux_info,
+            sender_output=sender_output.detach() if sender_output is not None else None,
         )
 
         return full_loss, interaction

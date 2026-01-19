@@ -92,7 +92,7 @@ class BezierReinforceWrapper(nn.Module):
         canvas_flat = torch.zeros(batch_size, canvas_shape[0] * canvas_shape[1], device=device)
         canvas_flat.scatter_add_(1, flat_indices, flat_weights)
 
-        background_shade = 0.3
+        background_shade = 0.0 #change back to 0.3 when model is working somewhat smoothly
         # Reshape to image: (Batch, H, W)
         canvas = canvas_flat.view(batch_size, canvas_shape[0], canvas_shape[1])
         canvas = torch.clamp(canvas + background_shade, 0.0, 1.0)
@@ -173,4 +173,4 @@ class BezierReinforceWrapper(nn.Module):
 
         sketch = self.paint_multiple_splines(sample)
 
-        return sketch, log_prob, entropy
+        return sketch, log_prob, entropy, sample

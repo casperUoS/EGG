@@ -148,6 +148,9 @@ if __name__ == "__main__":
     # 2. Extract the messages (the rendered sketches)
     # interaction.message contains the tensor of shape (Batch, 28, 28) or (Batch, 1, 28, 28)
     sketches = interaction.message.detach().cpu()
+    splines = interaction.sender_output.detach().cpu()
+    sender_input = interaction.sender_input.detach().cpu()
+    reciever_input = interaction.receiver_input.detach().cpu()
 
     # 3. Plot and save one sample
     import matplotlib.pyplot as plt
@@ -158,6 +161,14 @@ if __name__ == "__main__":
     # Remove the channel dimension if it exists (e.g., convert 1x28x28 to 28x28)
     if sample.ndim == 3:
         sample = sample.squeeze(0)
+
+    print("sample =", splines[0])
+    print(splines.shape)
+
+    print("sender_input =", sender_input[0][0])
+    print("sender_shape=", sender_input.shape )
+    print("reciever_input =", reciever_input[0][0])
+    print("reciever_shape=", reciever_input.shape )
 
     plt.figure()
     # Use inverted grayscale (drawing is usually white on black, or vice versa)

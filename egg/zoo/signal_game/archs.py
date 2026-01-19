@@ -93,6 +93,8 @@ class Receiver(nn.Module):
             self.lin2 = nn.Linear(vocab_size, embedding_size, bias=False)
 
     def forward(self, signal, x, _aux_input=None):
+        print("signal=", signal.shape)
+        print("x=", x.shape)
         # embed each image (left or right)
         emb = self.return_embeddings(x)
         # embed the signal
