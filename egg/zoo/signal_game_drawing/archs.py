@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.fx.experimental.unification.utils import freeze
 from torch.nn import Flatten
 import numpy as np
 
@@ -18,13 +19,20 @@ class DrawSender(nn.Module):
         self.feat_size = feat_size
         self.hidden_size = hidden_size
 
+        cifar10_wieghts = torch.load("/home/casper/Documents/Data/cifar10vgg_data/")
+
+        self.vgg = models.vgg16(weights=cifar10_wieghts).features
+
+        for param in self.vgg.parameters():
+            param.requires_grad = False
+
         self.lin1 = nn.Linear(feat_size, hidden_size, bias=False)
         self.bn1 = nn.BatchNorm1d(hidden_size)
         self.lin2 = nn.Linear(hidden_size, 7*num_splines, bias=False)
 
 
     def forward(self, x, state=None):
-        x = x[0] #get target image
+        x = self.vgg(x)
         x = torch.relu(self.lin1(x))
         x = self.lin2(x)
         return x

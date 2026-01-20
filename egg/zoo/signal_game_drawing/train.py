@@ -150,7 +150,9 @@ if __name__ == "__main__":
     sketches = interaction.message.detach().cpu()
     splines = interaction.sender_output.detach().cpu()
     sender_input = interaction.sender_input.detach().cpu()
-    reciever_input = interaction.receiver_input.detach().cpu()
+    receiver_input = interaction.receiver_input.detach().cpu()
+    receiver_output = interaction.receiver_output.detach().cpu()
+    labels = interaction.labels.detach().cpu()
 
     # 3. Plot and save one sample
     import matplotlib.pyplot as plt
@@ -164,18 +166,33 @@ if __name__ == "__main__":
 
     print("sample =", splines[0])
     print(splines.shape)
+    #
+    # print("sender_input =", sender_input[0][0])
+    # print("sender_shape=", sender_input.shape )
+    # print("reciever_input =", reciever_input[0][0])
+    # print("reciever_shape=", reciever_input.shape )
 
-    print("sender_input =", sender_input[0][0])
-    print("sender_shape=", sender_input.shape )
-    print("reciever_input =", reciever_input[0][0])
-    print("reciever_shape=", reciever_input.shape )
+    # print("reciever_output=",receiver_output)
+    # print("labels=",labels)
 
-    plt.figure()
-    # Use inverted grayscale (drawing is usually white on black, or vice versa)
-    plt.imshow(sample, cmap='gray', origin='upper')
-    plt.colorbar(label='Pixel Intensity')
-    plt.title("Sample Sketch from Trained Sender")
+    num_samples = min(4, sketches.size(0))  # In case batch size < 4
 
+    fig, axes = plt.subplots(2, 2, figsize=(10, 10))
+    axes = axes.flatten()
+
+    for i in range(num_samples):
+        sample = sketches[i]
+
+        # Remove the channel dimension if it exists
+        if sample.ndim == 3:
+            sample = sample.squeeze(0)
+
+        axes[i].imshow(sample, cmap='gray', origin='upper')
+        axes[i].set_title(f"Sample {i + 1}")
+        axes[i].axis('off')
+
+    plt.tight_layout()
+    plt.suptitle("Sample Sketches from Trained Sender", y=1.02)
     plt.show()
 
     core.close()
