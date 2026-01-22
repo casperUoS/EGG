@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 from torch import nn
 from torch.distributions import Normal, Independent
 
-canvas_shape = (28, 28)
+canvas_shape = (42, 42)
 
 
 
@@ -30,7 +30,7 @@ class BezierReinforceWrapper(nn.Module):
     def __init__(self, agent, std=1.0):
         super(BezierReinforceWrapper, self).__init__()
         self.agent = agent
-        self.std = std
+        self.log_std = nn.Parameter(torch.ones(1) * np.log(std))
 
 
     def paint_multiple_splines(self, all_spline_samples):
@@ -40,14 +40,17 @@ class BezierReinforceWrapper(nn.Module):
         num_t = 50
 
         # all_spline_samples: (batch, numsplines * 7)
-        params = all_spline_samples.view(batch_size, -1, 7) * canvas_shape[0]
+        params = all_spline_samples.view(batch_size, -1, 6) * canvas_shape[0]
         # params: (batch, num_splines, 7)
 
         # P1, P2, P3: (batch, splines, 2)
         P0, P1, P2, = params[..., 0:2], params[..., 2:4], params[..., 4:6]
         # W: (batch, splines, 1)
-        W = params[..., 6:7]
-        W = W * -0.003
+        # W = params[..., 6:7] lmao
+        num_splines = params.size(1)
+        # W = 1
+        # W = W * -0.003
+        W = torch.full((batch_size, num_splines, 1), -0.07, device=device)
 
         t = torch.linspace(0, 1, steps=num_t, device=device).view(1, 1, num_t, 1)
 
@@ -156,10 +159,12 @@ class BezierReinforceWrapper(nn.Module):
     def forward(self, *args, **kwargs):
         mu = self.agent(*args, **kwargs)
 
+        std = self.log_std.exp()
+
         # dim = mu.size(-1)
         # scale_tril = torch.eye(dim, device=mu.device) * self.noise_std
 
-        distr = Normal(loc=mu, scale=self.std)
+        distr = Normal(loc=mu, scale=0.01)
         distr = Independent(distr, 1)
 
         entropy = distr.entropy()

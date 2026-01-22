@@ -313,7 +313,7 @@ class Trainer:
         self.start_epoch = checkpoint.epoch
 
     def load_from_checkpoint(self, path):
-        """
+        """7
         Loads the game, agents, and optimizer state from a file
         :param path: Path to the file
         """

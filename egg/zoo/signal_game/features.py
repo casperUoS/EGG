@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.nn.parallel
 import torch.utils.data as data
+import torchvision
 
 
 class _BatchIterator:

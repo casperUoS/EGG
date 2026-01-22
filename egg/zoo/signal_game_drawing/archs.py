@@ -1,11 +1,41 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision
 from torch.fx.experimental.unification.utils import freeze
 from torch.nn import Flatten
 import numpy as np
 
 import torchvision.models as models
+
+
+# class model_VGG16(nn.Module):
+#     def __init__(self, num_classes):
+#         super(model_VGG16, self).__init__()
+#         # Load pre-trained VGG16 model
+#         vgg16_model = models.vgg16(weights='IMAGENET1K_V1')
+#
+#         # Modify the first convolutional layer to accept the specified number of input channels
+#         self.features = vgg16_model.features
+#         #         self.features[0] = nn.Conv2d(num_input_channels, 64, kernel_size=3, padding=1)
+#
+#         # Additional layers similar to the ResNet50 model
+#         self.additional_layers = nn.Sequential(
+#             nn.Flatten(),
+#             nn.BatchNorm1d(512),  # 128 -> 512
+#             nn.Linear(512, 512),  # 128x128 -> 512x512
+#             nn.ReLU(),
+#             nn.Dropout(0.5),
+#             nn.BatchNorm1d(512),  # 128 -> 512
+#             nn.Linear(512, num_classes),  # 128 -> 512
+#             nn.Softmax(dim=1)
+#         )
+#
+#     def forward(self, x):
+#         x = self.features(x)
+#         x = x.view(x.size(0), -1)
+#         x = self.additional_layers(x)
+#         return x
 
 class DrawSender(nn.Module):
     # This was mainly taken from dani's learning to draw model
@@ -19,20 +49,24 @@ class DrawSender(nn.Module):
         self.feat_size = feat_size
         self.hidden_size = hidden_size
 
-        cifar10_wieghts = torch.load("/home/casper/Documents/Data/cifar10vgg_data/")
 
-        self.vgg = models.vgg16(weights=cifar10_wieghts).features
+        # cifar10_weights = torch.load("/home/casper/Documents/Data/cifar10vgg_data/cifar10vgg.h5")
+
+        self.vgg = torch.load("/home/casper/Documents/Github/EGG/egg/zoo/signal_game_drawing/data/cifar10/cifar10_vgg19_features.pth", weights_only=False)
 
         for param in self.vgg.parameters():
             param.requires_grad = False
 
         self.lin1 = nn.Linear(feat_size, hidden_size, bias=False)
         self.bn1 = nn.BatchNorm1d(hidden_size)
-        self.lin2 = nn.Linear(hidden_size, 7*num_splines, bias=False)
+        self.lin2 = nn.Linear(hidden_size, 6*num_splines, bias=False)
 
 
     def forward(self, x, state=None):
+        x = x[0]
+
         x = self.vgg(x)
+        x = x.view(x.size(0), -1)
         x = torch.relu(self.lin1(x))
         x = self.lin2(x)
         return x
@@ -51,6 +85,13 @@ class DrawReceiver(nn.Module):
         #     for p in self.vgg16.parameters():
         #         p.requires_grad = False
 
+        # cifar10_weights = torch.load("/home/casper/Documents/Data/cifar10vgg_data/cifar10vgg.h5")
+
+        self.vgg = torch.load("/home/casper/Documents/Github/EGG/egg/zoo/signal_game_drawing/data/cifar10/cifar10_vgg19_features.pth", weights_only=False)
+
+        for param in self.vgg.parameters():
+            param.requires_grad = False
+
         self.enc = nn.Sequential(
             nn.AdaptiveAvgPool2d((8, 8)),
             Flatten(),
@@ -60,9 +101,9 @@ class DrawReceiver(nn.Module):
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=(3, 3), stride=(3, 3), bias=False)
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3), stride=(3, 3), bias=False)
 
-        self.dense1 = nn.Linear(in_features=576, out_features=128, bias=False)
-        self.dense2 = nn.Linear(in_features=128, out_features=128, bias=False)
-        self.denseFinal = nn.Linear(in_features=128, out_features=embedding_size, bias=False)
+        self.dense1 = nn.Linear(in_features=1024, out_features=256, bias=False)
+        self.dense2 = nn.Linear(in_features=256, out_features=128, bias=False)
+        self.denseFinal = nn.Linear(in_features=256, out_features=embedding_size, bias=False)
 
         self.dropout = nn.Dropout(p=dropout_rate)
 
@@ -103,8 +144,10 @@ class DrawReceiver(nn.Module):
         embs = []
         for i in range(self.game_size):
             h = x[i]
+            h = self.vgg(h)
             if len(h.size()) == 3:
                 h = h.squeeze(dim=-1)
+            h = h.view(h.size(0), -1)
             h_i = self.lin1(h)
             # h_i are batch_size x embedding_size
             h_i = h_i.unsqueeze(dim=1)
