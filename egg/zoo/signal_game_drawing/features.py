@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.nn.parallel
 import torch.utils.data as data
+from torchvision import transforms
 
 
 class _BatchIterator:
@@ -60,9 +61,17 @@ class _BatchIterator:
 
         images_vectors_sender = []
 
+        # print(images_indexes_sender)
         for i in range(opt.game_size):
-            x, _ = loader.dataset[images_indexes_sender[:, i]]
-            images_vectors_sender.append(x)
+            batch_indices = images_indexes_sender[:, i]
+
+            batch_images = []
+            for b_idx in batch_indices:
+                img, _ = loader.dataset[int(b_idx)]
+                batch_images.append(img)
+
+            # Stack the list of images into a single tensor
+            images_vectors_sender.append(torch.stack(batch_images))
 
         images_vectors_sender = torch.stack(images_vectors_sender).contiguous()
         y = torch.zeros(opt.batch_size).long()
@@ -86,10 +95,44 @@ class ImagenetLoader(torch.utils.data.DataLoader):
 
     def __iter__(self):
         if self.seed is None:
+
             seed = np.random.randint(0, 2 ** 32)
         else:
             seed = self.seed
         return _BatchIterator(self, n_batches=self.batches_per_epoch, seed=seed)
+
+
+
+class CIFAR10WithObj2ID(data.Dataset):
+    def __init__(self, root, train=True, download=False):
+        from torchvision.datasets import CIFAR10
+
+        self.dataset = CIFAR10(root=root, train=train, download=download, transform=transforms.ToTensor())
+        self.data = self.dataset.data
+        self.targets = self.dataset.targets
+        self.create_obj2id()
+
+    def create_obj2id(self):
+        """Create mapping from class labels to image indices"""
+        self.obj2id = {}
+
+        for class_idx in range(10):  # CIFAR-10 has 10 classes
+            self.obj2id[class_idx] = {
+                "labels": class_idx,
+                "ims": []
+            }
+
+        # Populate with image indices for each class
+        # Use self.targets instead of iterating over self.data
+        for i, label in enumerate(self.targets):
+            self.obj2id[label]["ims"].append(i)
+
+    def __getitem__(self, index):
+        img, _target = self.dataset[index]
+        return img, index
+
+    def __len__(self):
+        return len(self.dataset)
 
 
 class ImageNetFeat(data.Dataset):

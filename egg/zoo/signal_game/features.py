@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.nn.parallel
 import torch.utils.data as data
+import torchvision
 
 
 class _BatchIterator:
@@ -142,3 +143,5 @@ class ImageNetFeat(data.Dataset):
                 self.obj2id[idx_label]["labels"] = labels[i]
                 self.obj2id[idx_label]["ims"] = []
             self.obj2id[idx_label]["ims"].append(i)
+
+

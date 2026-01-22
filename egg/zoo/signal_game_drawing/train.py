@@ -7,10 +7,13 @@ import argparse
 import os
 
 import torch.nn.functional as F
+import torchvision.datasets
 
 import egg.core as core
 from egg.zoo.signal_game.archs import InformedSender, Receiver
-from egg.zoo.signal_game.features import ImageNetFeat, ImagenetLoader
+from egg.zoo.signal_game_drawing.features import ImageNetFeat, ImagenetLoader, CIFAR10WithObj2ID
+from egg.zoo.signal_game_drawing.archs import DrawSender, DrawReceiver
+from egg.zoo.signal_game_drawing.wrappers import BezierReinforceWrapper
 
 
 def parse_arguments():
@@ -72,24 +75,16 @@ def loss_nll(
 
 
 def get_game(opt):
-    feat_size = 4096
-    sender = InformedSender(
-        opt.game_size,
-        feat_size,
-        opt.embedding_size,
-        opt.hidden_size,
-        opt.vocab_size,
-        temp=opt.tau_s,
+    feat_size = 512
+    sender = DrawSender(
+        feat_size=feat_size,
     )
-    receiver = Receiver(
-        opt.game_size,
-        feat_size,
-        opt.embedding_size,
-        opt.vocab_size,
-        reinforce=(opts.mode == "rf"),
+    receiver = DrawReceiver(
+        game_size=opt.game_size,
+        feat_size=feat_size,
     )
     if opts.mode == "rf":
-        sender = core.ReinforceWrapper(sender)
+        sender = BezierReinforceWrapper(sender)
         receiver = core.ReinforceWrapper(receiver)
         game = core.SymbolGameReinforce(
             sender,
@@ -111,10 +106,15 @@ if __name__ == "__main__":
     opts = parse_arguments()
 
     data_folder = os.path.join(opts.root, "train/")
-    dataset = ImageNetFeat(root=data_folder)
+    cifar_path = "/home/casper/Documents/Github/EGG/data/cifar10"
+    dataset_exists = os.path.exists(os.path.join(cifar_path, "cifar-10-batches-py"))
+    # dataset = ImageNetFeat(root=data_folder)
+
+    train_dataset = CIFAR10WithObj2ID(cifar_path, train=True, download=not dataset_exists)
+    test_dataset = CIFAR10WithObj2ID(cifar_path, train=False, download=not dataset_exists)
 
     train_loader = ImagenetLoader(
-        dataset,
+        train_dataset,
         batch_size=opts.batch_size,
         shuffle=True,
         opt=opts,
@@ -122,7 +122,7 @@ if __name__ == "__main__":
         seed=None,
     )
     validation_loader = ImagenetLoader(
-        dataset,
+        test_dataset,
         opt=opts,
         batch_size=opts.batch_size,
         batches_per_epoch=opts.batches_per_epoch,
@@ -146,5 +146,65 @@ if __name__ == "__main__":
     )
 
     trainer.train(n_epochs=opts.n_epochs)
+
+    # 1. Run inference on the validation set to get a batch of interactions
+    print("Generating sample sketch...")
+    val_loss, interaction = trainer.eval()
+
+    # 2. Extract the messages (the rendered sketches)
+    # interaction.message contains the tensor of shape (Batch, 28, 28) or (Batch, 1, 28, 28)
+    sketches = interaction.message.detach().cpu()
+    splines = interaction.sender_output.detach().cpu()
+    sender_input = interaction.sender_input.detach().cpu()
+    receiver_input = interaction.receiver_input.detach().cpu()
+    receiver_output = interaction.receiver_output.detach().cpu()
+    labels = interaction.labels.detach().cpu()
+
+    # 3. Plot and save one sample
+    import matplotlib.pyplot as plt
+
+    # Pick the first image in the batch
+    sample = sketches[0]
+
+    # Remove the channel dimension if it exists (e.g., convert 1x28x28 to 28x28)
+    if sample.ndim == 3:
+        sample = sample.squeeze(0)
+
+    print("sample =", splines[0])
+    print(splines.shape)
+    #
+    # print("sender_input =", sender_input[0][0])
+    # print("sender_shape=", sender_input.shape )
+    # print("reciever_input =", reciever_input[0][0])
+    # print("reciever_shape=", reciever_input.shape )
+
+    # print("reciever_output=",receiver_output)
+    # print("labels=",labels)
+
+    class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
+                   'dog', 'frog', 'horse', 'ship', 'truck']
+
+    num_samples = min(9, sketches.size(0))  # In case batch size < 4
+
+    fig, axes = plt.subplots(3, 3, figsize=(10, 10))
+    axes = axes.flatten()
+
+    for i in range(num_samples):
+        sample = sketches[i]
+
+        # Remove the channel dimension if it exists
+        if sample.ndim == 3:
+            sample = sample.squeeze(0)
+
+        class_idx = labels[i].item()
+        class_name = class_names[class_idx]
+
+        axes[i].imshow(sample, cmap='gray', origin='lower')
+        axes[i].set_title(f"Sample {i + 1}, classname = {class_name}")
+        axes[i].axis('off')
+
+    plt.tight_layout()
+    plt.suptitle("Sample Sketches from Trained Sender", y=1.02)
+    plt.show()
 
     core.close()
