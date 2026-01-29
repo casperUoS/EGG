@@ -46,7 +46,7 @@ from .reinforce_wrappers import (
     SenderReceiverRnnReinforce,
     SymbolGameReinforce,
     TransformerReceiverDeterministic,
-    TransformerSenderReinforce,
+    TransformerSenderReinforce, SymbolGameDrawReinforce,
 )
 from .rnn import RnnEncoder
 from .trainers import Trainer
@@ -77,6 +77,7 @@ __all__ = [
     "GumbelSoftmaxWrapper",
     "SymbolGameGS",
     "SymbolGameReinforce",
+    "SymbolGameDrawReinforce",
     "ReinforceDeterministicWrapper",
     "RelaxedEmbedding",
     "RnnReceiverReinforce",

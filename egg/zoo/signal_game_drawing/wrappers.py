@@ -4,8 +4,6 @@ from matplotlib import pyplot as plt
 from torch import nn
 from torch.distributions import Normal, Independent
 
-canvas_shape = (42, 42)
-
 
 
 
@@ -27,10 +25,11 @@ class BezierReinforceWrapper(nn.Module):
     1
     """
 
-    def __init__(self, agent, std=1.0):
+    def __init__(self, agent, canvas_size=28, std=0.1):
         super(BezierReinforceWrapper, self).__init__()
         self.agent = agent
         self.log_std = nn.Parameter(torch.ones(1) * np.log(std))
+        self.canvas_size = canvas_size
 
 
     def paint_multiple_splines(self, all_spline_samples):
@@ -40,7 +39,7 @@ class BezierReinforceWrapper(nn.Module):
         num_t = 50
 
         # all_spline_samples: (batch, numsplines * 7)
-        params = all_spline_samples.view(batch_size, -1, 6) * canvas_shape[0]
+        params = all_spline_samples.view(batch_size, -1, 6) * self.canvas_size
         # params: (batch, num_splines, 7)
 
         # P1, P2, P3: (batch, splines, 2)
@@ -78,83 +77,29 @@ class BezierReinforceWrapper(nn.Module):
         y_indices = base_y.unsqueeze(-1) + dy
 
         # Clamp to canvas boundaries
-        x_indices = torch.clamp(x_indices, 0, canvas_shape[0] - 1)
-        y_indices = torch.clamp(y_indices, 0, canvas_shape[1] - 1)
+        x_indices = torch.clamp(x_indices, 0, self.canvas_size - 1)
+        y_indices = torch.clamp(y_indices, 0, self.canvas_size - 1)
 
         # Flatten spatial dims to 1D for scatter
         # Shape: (Batch, Total_Points) where Total_Points = Splines * num_t * num_offsets
         flat_x = x_indices.view(batch_size, -1)
         flat_y = y_indices.view(batch_size, -1)
 
-        flat_indices = flat_x * canvas_shape[1] + flat_y
+        flat_indices = flat_x * self.canvas_size + flat_y
 
         # Expand weights to match the brush offsets dimensions
         # W starts as (Batch, Splines, 1), needs to match (Batch, Splines, num_t, num_offsets)
         num_offsets = dx.size(0)
         flat_weights = W.unsqueeze(-1).expand(-1, -1, num_t, num_offsets).reshape(batch_size, -1)
 
-        canvas_flat = torch.zeros(batch_size, canvas_shape[0] * canvas_shape[1], device=device)
+        canvas_flat = torch.zeros(batch_size, self.canvas_size * self.canvas_size, device=device)
         canvas_flat.scatter_add_(1, flat_indices, flat_weights)
 
         background_shade = 0.3
-        canvas = canvas_flat.view(batch_size, canvas_shape[0], canvas_shape[1])
+        canvas = canvas_flat.view(batch_size, self.canvas_size, self.canvas_size)
         canvas = torch.clamp(canvas + background_shade, 0.0, 1.0)
 
         return canvas
-
-
-    # def paint_multiple_splines(self,all_spline_params):
-    #     """Paint multiple splines on a single canvas."""
-    #
-    #     def paint_spline_on_canvas(spline_params):
-    #         """Paint a single spline on the canvas with specified thickness using advanced indexxing."""
-    #
-    #         def bezier_spline(t, P0, P1, P2):
-    #             """Compute points on a quadratic Bézier spline for a given t."""
-    #             t = t[:, None]  # Shape (N, 1) to broadcast with P0, P1, P2 of shape (2,)
-    #             P = (1 - t) ** 2 * P0 + 2 * (1 - t) * t * P1 + t ** 2 * P2
-    #             return P  # Returns shape (N, 2), a list of points on the spline
-    #
-    #         brush_size = 0
-    #
-    #         spline_params *= canvas_shape[0]
-    #
-    #         canvas = np.zeros(canvas_shape)
-    #
-    #         for spline in spline_params:
-    #             # P0, P1, P2 = spline_params.reshape((3, 2))
-    #             P0, P1, P2, W = spline[0:2], spline[2:4], spline[4:6], spline[6]
-    #             W *= -0.003  # This is the weight param. -0.005 is too dark. -0.002 may be too light.
-    #             t_values = np.linspace(0, 1, num=50)
-    #             spline_points = bezier_spline(t_values, P0, P1, P2)
-    #             x_points, y_points = np.round(spline_points).astype(int).T
-    #
-    #             # Generate brush offsets
-    #             brush_offsets = np.array([(dx, dy) for dx in range(-brush_size, brush_size + 1)  # brush_size + 1
-    #                                       for dy in range(-brush_size, brush_size + 1)])  # brush_size + 1
-    #             x_offsets, y_offsets = brush_offsets.T
-    #
-    #             # Calculate all indices to update for each point (broadcasting magic)
-    #             all_x_indices = x_points[:, None] + x_offsets
-    #             all_y_indices = y_points[:, None] + y_offsets
-    #
-    #             canvas[all_x_indices, all_y_indices] += W
-    #         return canvas
-    #
-    #     background_shade = 0.3  # This is the background color! For nearly all experiments it has been 0.2*number of splines. For a larger sig gap go for 0.1*number of splines
-    #
-    #     splines = []
-    #
-    #     for spline_params in all_spline_params:
-    #         spline_params = paint_spline_on_canvas(spline_params.reshape(-1, 7))
-    #         splines.append(spline_params)
-    #     canvas = np.clip(np.array(splines) + background_shade, 0.0, 1.0)
-    #
-    #     # print(all_spline_params.reshape(-1, 7))
-    #
-    #     # all_spline_params = np.clip(all_spline_params, 0.0, 1.0)
-    #     # canvas = np.clip(paint_spline_on_canvas(all_spline_params.reshape(-1, 7)).sum(axis=0) + background_shade, 0.0, 1.0)
-    #     return canvas
 
     def forward(self, *args, **kwargs):
         mu = self.agent(*args, **kwargs)
@@ -164,7 +109,7 @@ class BezierReinforceWrapper(nn.Module):
         # dim = mu.size(-1)
         # scale_tril = torch.eye(dim, device=mu.device) * self.noise_std
 
-        distr = Normal(loc=mu, scale=0.01)
+        distr = Normal(loc=mu, scale=0.0001)
         distr = Independent(distr, 1)
 
         entropy = distr.entropy()

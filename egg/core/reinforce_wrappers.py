@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical, MultivariateNormal, Normal, Independent
+from torchvision.transforms import v2
 
 from .baselines import Baseline, MeanBaseline
 from .interaction import LoggingStrategy
@@ -171,7 +172,7 @@ class SymbolGameReinforce(nn.Module):
             else test_logging_strategy
         )
 
-    def forward(self, sender_input, labels, receiver_input=None, aux_input=None):
+    def forward(self, sender_input, sender_label, receiver_input=None, target_position=None, aux_input=None):
         sender_out = self.sender(sender_input, aux_input)
         if len(sender_out) == 3:
             message, sender_log_prob, sender_entropy = sender_out
@@ -183,7 +184,7 @@ class SymbolGameReinforce(nn.Module):
         )
 
         loss, aux_info = self.loss(
-            sender_input, message, receiver_input, receiver_output, labels, aux_input
+            sender_input, message, receiver_input, receiver_output, target_position, aux_input
         )
 
         if self.training:
@@ -212,7 +213,7 @@ class SymbolGameReinforce(nn.Module):
         )
         interaction = logging_strategy.filtered_interaction(
             sender_input=sender_input,
-            labels=labels,
+            labels=sender_label,
             receiver_input=receiver_input,
             aux_input=aux_input,
             message=message.detach(),
@@ -223,6 +224,84 @@ class SymbolGameReinforce(nn.Module):
         )
 
         return full_loss, interaction
+
+class SymbolGameDrawReinforce(SymbolGameReinforce):
+    def __init__(self, *args, canvas_size=28, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.rotater = v2.RandomRotation(degrees=(0, 30), fill=0.3)
+        self.canvas_size = canvas_size
+
+    def forward(self, sender_input, sender_label, receiver_input=None, target_position=None, aux_input=None):
+        sender_out = self.sender(sender_input, aux_input)
+        if len(sender_out) == 3:
+            message, sender_log_prob, sender_entropy = sender_out
+            sender_output = None
+        else:
+            message, sender_log_prob, sender_entropy, sender_output = sender_out
+        message = self.rotater(message)
+        receiver_output, receiver_log_prob, receiver_entropy = self.receiver(
+            message, receiver_input, aux_input
+        )
+
+
+
+        # message_transformed = self.rotater(message_transformed)
+
+        loss, aux_info = self.loss(
+            sender_input, message, receiver_input, receiver_output, target_position, aux_input
+        )
+
+        if self.training:
+            _verify_batch_sizes(loss, sender_log_prob, receiver_log_prob)
+
+        policy_loss = (
+                (loss.detach() - self.baseline.predict(loss.detach()))
+                * (sender_log_prob + receiver_log_prob)
+        ).mean()
+        entropy_loss = -(
+                sender_entropy.mean() * self.sender_entropy_coeff
+                + receiver_entropy.mean() * self.receiver_entropy_coeff
+        )
+
+        if self.training:
+            self.baseline.update(loss.detach())
+
+        # Sum pixels on all four edges
+        top_edge = message[:, 0, :].sum(dim=1)  # Top row
+        bottom_edge = message[:, -1, :].sum(dim=1)  # Bottom row
+        left_edge = message[:, :, 0].sum(dim=1)  # Left column
+        right_edge = message[:, :, -1].sum(dim=1)  # Right column
+
+        edge_penalty = (top_edge + bottom_edge + left_edge + right_edge) - (0.3 * 4 * self.canvas_size)
+
+        # edge penalty needs to be negative
+        edge_coeff = -1
+        edge_penalty = edge_penalty * edge_coeff
+
+        full_loss = policy_loss + entropy_loss + loss.mean() + edge_penalty.mean()
+
+        aux_info["baseline"] = self.baseline.predict(loss.detach())
+        aux_info["sender_entropy"] = sender_entropy.detach()
+        aux_info["receiver_entropy"] = receiver_entropy.detach()
+
+        logging_strategy = (
+            self.train_logging_strategy if self.training else self.test_logging_strategy
+        )
+        interaction = logging_strategy.filtered_interaction(
+            sender_input=sender_input,
+            labels=sender_label,
+            receiver_input=receiver_input,
+            aux_input=aux_input,
+            message=message.detach(),
+            receiver_output=receiver_output.detach(),
+            message_length=torch.ones(message.size(0)),
+            aux=aux_info,
+            sender_output=sender_output.detach() if sender_output is not None else None,
+            edge_penalty=edge_penalty,
+        )
+
+        return full_loss, interaction
+
 
 
 class RnnSenderReinforce(nn.Module):
