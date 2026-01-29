@@ -7,6 +7,8 @@ import os
 import pathlib
 from typing import List, Optional
 
+from timm.utils import accuracy
+
 try:
     # requires python >= 3.7
     from contextlib import nullcontext
@@ -52,6 +54,7 @@ class Trainer:
         callbacks: Optional[List[Callback]] = None,
         grad_norm: float = None,
         aggregate_interaction_logs: bool = True,
+        run = None
     ):
         """
         :param game: A nn.Module that implements forward(); it is expected that forward returns a tuple of (loss, d),
@@ -72,6 +75,7 @@ class Trainer:
         common_opts = get_opts()
         self.validation_freq = common_opts.validation_freq
         self.device = common_opts.device if device is None else device
+        self.run = run
 
         self.should_stop = False
         self.start_epoch = 0  # Can be overwritten by checkpoint loader
@@ -270,6 +274,11 @@ class Trainer:
                 callback.on_epoch_begin(epoch + 1)
 
             train_loss, train_interaction = self.train_epoch()
+            self.run.log({"train_loss": train_loss})
+            self.run.log({"train_accuracy": train_interaction.aux["acc"].mean()})
+            self.run.log({"train_baseline": train_interaction.aux["baseline"].mean()})
+            self.run.log({"train_receiver_entropy": train_interaction.aux["receiver_entropy"].mean()})
+            self.run.log({"epoch": epoch})
 
             for callback in self.callbacks:
                 callback.on_epoch_end(train_loss, train_interaction, epoch + 1)
@@ -283,6 +292,10 @@ class Trainer:
                 for callback in self.callbacks:
                     callback.on_validation_begin(epoch + 1)
                 validation_loss, validation_interaction = self.eval()
+                self.run.log({"test_loss": validation_loss})
+                self.run.log({"test_accuracy": validation_interaction.aux["acc"].mean()})
+                self.run.log({"test_baseline": validation_interaction.aux["baseline"].mean()})
+                self.run.log({"test_receiver_entropy": validation_interaction.aux["receiver_entropy"].mean()})
 
                 for callback in self.callbacks:
                     callback.on_validation_end(

@@ -57,9 +57,9 @@ class DrawSender(nn.Module):
         for param in self.vgg.parameters():
             param.requires_grad = False
 
-        self.lin1 = nn.Linear(feat_size, hidden_size, bias=False)
-        self.bn1 = nn.BatchNorm1d(hidden_size)
-        self.lin2 = nn.Linear(hidden_size, 6*num_splines, bias=False)
+        self.lin1 = nn.Linear(feat_size, hidden_size, bias=True)
+        # self.bn1 = nn.BatchNorm1d(hidden_size)
+        self.lin2 = nn.Linear(hidden_size, 6*num_splines, bias=True)
 
 
     def forward(self, x, state=None):
@@ -68,6 +68,7 @@ class DrawSender(nn.Module):
         x = self.vgg(x)
         x = x.view(x.size(0), -1)
         x = torch.relu(self.lin1(x))
+        # x = self.bn1(x)
         x = self.lin2(x)
         return x
 
@@ -77,7 +78,7 @@ class DrawReceiver(nn.Module):
 
         self.game_size = game_size
 
-        self.lin1 = nn.Linear(feat_size, embedding_size, bias=False)
+        self.lin1 = nn.Linear(feat_size, embedding_size, bias=True)
         # self.lin2 = nn.Embedding(vocab_size, embedding_size)
 
         # self.vgg16 = models.vgg16(pretrained=True)
@@ -98,12 +99,13 @@ class DrawReceiver(nn.Module):
             nn.Linear(8 * 8 * 256, embedding_size)
         )
 
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=(3, 3), stride=(3, 3), bias=False)
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3), stride=(3, 3), bias=False)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), stride=(1, 1) ,bias=True)
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(3, 3), stride=(1, 1), bias=True)
+        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3), stride=(1, 1), bias=True)
 
-        self.dense1 = nn.Linear(in_features=1024, out_features=256, bias=False)
-        self.dense2 = nn.Linear(in_features=256, out_features=128, bias=False)
-        self.denseFinal = nn.Linear(in_features=256, out_features=embedding_size, bias=False)
+        self.dense1 = nn.Linear(in_features=30976, out_features=1024, bias=True)
+        self.dense2 = nn.Linear(in_features=1024, out_features=256, bias=True)
+        self.denseFinal = nn.Linear(in_features=256, out_features=embedding_size, bias=True)
 
         self.dropout = nn.Dropout(p=dropout_rate)
 
@@ -117,15 +119,17 @@ class DrawReceiver(nn.Module):
         h_s = F.relu(h_s)
         h_s = self.conv2(h_s)
         h_s = F.relu(h_s)
+        h_s = self.conv3(h_s)
+        h_s = F.relu(h_s)
         h_s = h_s.reshape((h_s.shape[0], -1))  # Flatten
 
         # Embedding Layer
         emb_s = self.dense1(h_s)
         embd_s = F.relu(emb_s)
         embd_s = self.dropout(embd_s)
-        # embd_s = self.dense2(embd_s)
-        # embd_s = F.relu(embd_s)
-        # embd_s = self.dropout(embd_s)
+        embd_s = self.dense2(embd_s)
+        embd_s = F.relu(embd_s)
+        embd_s = self.dropout(embd_s)
         embd_s = self.denseFinal(embd_s)
         # embd_s is of size batch_size x embedding_size
         embd_s = embd_s.unsqueeze(dim=1)

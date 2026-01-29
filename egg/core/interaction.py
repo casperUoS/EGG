@@ -22,6 +22,7 @@ class LoggingStrategy:
     store_receiver_output: bool = True
     store_message_length: bool = True
     store_sender_output: bool = True
+    store_edge_penalty: bool = True
 
     def filtered_interaction(
         self,
@@ -34,6 +35,7 @@ class LoggingStrategy:
         message_length: Optional[torch.Tensor],
         aux: Dict[str, torch.Tensor],
         sender_output: Optional[torch.Tensor],
+        edge_penalty: Optional[torch.Tensor],
     ):
 
         return Interaction(
@@ -46,6 +48,7 @@ class LoggingStrategy:
             message_length=message_length if self.store_message_length else None,
             aux=aux,
             sender_output=sender_output if self.store_sender_output else None,
+            edge_penalty= edge_penalty if self.store_edge_penalty else None,
         )
 
     @classmethod
@@ -70,6 +73,8 @@ class Interaction:
     # what agents produce
     message: Optional[torch.Tensor]
     receiver_output: Optional[torch.Tensor]
+
+    edge_penalty: Optional[torch.Tensor]
 
     # auxilary info
     message_length: Optional[torch.Tensor]
@@ -123,6 +128,7 @@ class Interaction:
             receiver_output=_check_cat([x.receiver_output for x in interactions]),
             aux=_combine_aux_dicts(self.aux, other.aux),
             sender_output=_check_cat([x.sender_output for x in interactions]),
+            edge_penantly=_check_cat([x.edge_penantly for x in interactions]),
         )
 
     @property
@@ -134,6 +140,7 @@ class Interaction:
             self.message,
             self.receiver_output,
             self.message_length,
+            self.edge_penalty,
         ]
         for t in interaction_fields:
             if t is not None:
@@ -155,6 +162,7 @@ class Interaction:
         self.message = _to(self.message)
         self.receiver_output = _to(self.receiver_output)
         self.message_length = _to(self.message_length)
+        self.edge_penalty = _to(self.edge_penalty)
 
         if self.aux_input:
             self.aux_input = dict((k, _to(v)) for k, v in self.aux_input.items())
@@ -183,7 +191,7 @@ message=tensor([1., 1.]), receiver_output=tensor([1., 1.]), message_length=None,
         RuntimeError: Appending empty and non-empty interactions logs. Normally this shouldn't happen!
         """
 
-        def _check_cat(lst):
+        def _check_cat(lst, nonSingular=False):
             if all(x is None for x in lst):
                 return None
             # if some but not all are None: not good
@@ -192,6 +200,8 @@ message=tensor([1., 1.]), receiver_output=tensor([1., 1.]), message_length=None,
                     "Appending empty and non-empty interactions logs. "
                     "Normally this shouldn't happen!"
                 )
+            if nonSingular:
+                return torch.cat(lst, dim=1)
             return torch.cat(lst, dim=0)
 
         assert interactions, "interaction list must not be empty"
@@ -217,8 +227,8 @@ message=tensor([1., 1.]), receiver_output=tensor([1., 1.]), message_length=None,
             aux[k] = _check_cat([x.aux[k] for x in interactions])
 
         return Interaction(
-            sender_input=_check_cat([x.sender_input for x in interactions]),
-            receiver_input=_check_cat([x.receiver_input for x in interactions]),
+            sender_input=_check_cat([x.sender_input for x in interactions], nonSingular=True),
+            receiver_input=_check_cat([x.receiver_input for x in interactions], nonSingular=True),
             labels=_check_cat([x.labels for x in interactions]),
             aux_input=aux_input,
             message=_check_cat([x.message for x in interactions]),
@@ -226,6 +236,7 @@ message=tensor([1., 1.]), receiver_output=tensor([1., 1.]), message_length=None,
             receiver_output=_check_cat([x.receiver_output for x in interactions]),
             aux=aux,
             sender_output=_check_cat([x.sender_output for x in interactions]),
+            edge_penalty=_check_cat([x.edge_penalty for x in interactions]),
         )
 
     @staticmethod
@@ -268,6 +279,8 @@ message=tensor([1., 1.]), receiver_output=tensor([1., 1.]), message_length=None,
                 "message",
                 "message_length",
                 "receiver_output",
+                "sender_output",
+                "edge_penalty",
             ]
         )
 

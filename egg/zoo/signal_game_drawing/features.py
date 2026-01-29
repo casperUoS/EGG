@@ -74,15 +74,20 @@ class _BatchIterator:
             images_vectors_sender.append(torch.stack(batch_images))
 
         images_vectors_sender = torch.stack(images_vectors_sender).contiguous()
-        y = torch.zeros(opt.batch_size).long()
 
+        y_sender = torch.zeros(opt.batch_size).long()
+        for i in range(opt.batch_size):
+            target_image_idx = int(images_indexes_sender[i, 0])
+            y_sender[i] = loader.dataset.targets[target_image_idx]
+
+        y_reciever = torch.zeros(opt.batch_size).long()
         images_vectors_receiver = torch.zeros_like(images_vectors_sender)
         for i in range(opt.batch_size):
             permutation = torch.randperm(opt.game_size)
 
             images_vectors_receiver[:, i, :] = images_vectors_sender[permutation, i, :]
-            y[i] = permutation.argmin()
-        return images_vectors_sender, y, images_vectors_receiver
+            y_reciever[i] = permutation.argmin()
+        return images_vectors_sender, y_sender, images_vectors_receiver, y_reciever
 
 
 class ImagenetLoader(torch.utils.data.DataLoader):
