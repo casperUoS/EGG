@@ -124,7 +124,7 @@ if __name__ == "__main__":
     )
 
     data_folder = os.path.join(opts.root, "train/")
-    cifar_path = "/home/casper/Documents/Github/EGG/data/cifar10"
+    cifar_path = "data/cifar10"
     dataset_exists = os.path.exists(os.path.join(cifar_path, "cifar-10-batches-py"))
     # dataset = ImageNetFeat(root=data_folder)
 
