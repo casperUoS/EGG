@@ -42,6 +42,7 @@ class DrawSender(nn.Module):
     def __init__(
             self,
             feat_size,
+            vgg_path,
             hidden_size = 512,
             num_splines = 3
     ):
@@ -52,7 +53,7 @@ class DrawSender(nn.Module):
 
         # cifar10_weights = torch.load("/home/casper/Documents/Data/cifar10vgg_data/cifar10vgg.h5")
 
-        self.vgg = torch.load("/home/casper/Documents/Github/EGG/egg/zoo/signal_game_drawing/data/cifar10/cifar10_vgg19_features.pth", weights_only=False)
+        self.vgg = torch.load(vgg_path, weights_only=False)
 
         for param in self.vgg.parameters():
             param.requires_grad = False
@@ -73,7 +74,7 @@ class DrawSender(nn.Module):
         return x
 
 class DrawReceiver(nn.Module):
-    def __init__(self, game_size, feat_size, dropout_rate=0.4, action_dim=2, embedding_size=50, freeze_vgg=True):
+    def __init__(self, game_size, feat_size, vgg_path, dropout_rate=0.4, action_dim=2, embedding_size=50, freeze_vgg=True):
         super(DrawReceiver, self).__init__()
 
         self.game_size = game_size
@@ -88,7 +89,7 @@ class DrawReceiver(nn.Module):
 
         # cifar10_weights = torch.load("/home/casper/Documents/Data/cifar10vgg_data/cifar10vgg.h5")
 
-        self.vgg = torch.load("/home/casper/Documents/Github/EGG/egg/zoo/signal_game_drawing/data/cifar10/cifar10_vgg19_features.pth", weights_only=False)
+        self.vgg = torch.load(vgg_path, weights_only=False)
 
         for param in self.vgg.parameters():
             param.requires_grad = False

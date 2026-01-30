@@ -20,7 +20,7 @@ import wandb
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root", default="", help="data root folder")
+    parser.add_argument("--vgg_root", default="", help="data root folder")
     # 2-agents specific parameters
     parser.add_argument(
         "--tau_s", type=float, default=10.0, help="Sender Gibbs temperature"
@@ -81,10 +81,12 @@ def get_game(config):
     feat_size = 512
     sender = DrawSender(
         feat_size=feat_size,
+        vgg_path=opts.vgg_root,
     )
     receiver = DrawReceiver(
         game_size=config.game_size,
         feat_size=feat_size,
+        vgg_path=opts.vgg_root,
     )
     if opts.mode == "rf":
         sender = BezierReinforceWrapper(sender, 28)
@@ -123,7 +125,7 @@ if __name__ == "__main__":
         game_size=opts.game_size,
     )
 
-    data_folder = os.path.join(opts.root, "train/")
+    # data_folder = os.path.join(opts.root, "train/")
     cifar_path = "data/cifar10"
     dataset_exists = os.path.exists(os.path.join(cifar_path, "cifar-10-batches-py"))
     # dataset = ImageNetFeat(root=data_folder)
