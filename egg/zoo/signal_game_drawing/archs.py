@@ -62,9 +62,9 @@ class DrawSender(nn.Module):
         for param in self.vgg.parameters():
             param.requires_grad = False
 
-        self.lin1 = nn.Linear(feat_size, hidden_size, bias=False)
+        self.lin1 = nn.Linear(feat_size, hidden_size, bias=True)
         # self.bn1 = nn.BatchNorm1d(hidden_size)
-        self.lin2 = nn.Linear(hidden_size, 6*num_splines, bias=False)
+        self.lin2 = nn.Linear(hidden_size, 6*num_splines, bias=True)
 
 
     def forward(self, x, state=None):
@@ -84,7 +84,7 @@ class DrawReceiver(nn.Module):
 
         self.game_size = game_size
 
-        self.lin1 = nn.Linear(feat_size, embedding_size, bias=False)
+        self.lin1 = nn.Linear(feat_size, embedding_size, bias=True)
         # self.lin2 = nn.Embedding(vocab_size, embedding_size)
 
         # self.vgg16 = models.vgg16(pretrained=True)
@@ -105,13 +105,13 @@ class DrawReceiver(nn.Module):
             nn.Linear(8 * 8 * 256, embedding_size)
         )
 
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), stride=(1, 1) ,bias=False)
-        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(3, 3), stride=(1, 1), bias=False)
-        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3), stride=(1, 1), bias=False)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), stride=(1, 1) ,bias=True)
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(3, 3), stride=(1, 1), bias=True)
+        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3), stride=(1, 1), bias=True)
 
-        self.dense1 = nn.Linear(in_features=30976, out_features=1024, bias=False)
-        self.dense2 = nn.Linear(in_features=1024, out_features=256, bias=False)
-        self.denseFinal = nn.Linear(in_features=256, out_features=embedding_size, bias=False)
+        self.dense1 = nn.Linear(in_features=30976, out_features=1024, bias=True)
+        self.dense2 = nn.Linear(in_features=1024, out_features=256, bias=True)
+        self.denseFinal = nn.Linear(in_features=256, out_features=embedding_size, bias=True)
 
         self.dropout = nn.Dropout(p=dropout_rate)
 
@@ -175,13 +175,13 @@ class DrawReceiverClassifier(nn.Module):
         for param in self.vgg.parameters():
             param.requires_grad = False
 
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), stride=(1, 1) ,bias=False)
-        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(3, 3), stride=(1, 1), bias=False)
-        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3), stride=(1, 1), bias=False)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), stride=(1, 1) ,bias=True)
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(3, 3), stride=(1, 1), bias=True)
+        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3), stride=(1, 1), bias=True)
 
-        self.dense1 = nn.Linear(in_features=30976, out_features=1024, bias=False)
-        self.dense2 = nn.Linear(in_features=1024, out_features=256, bias=False)
-        self.denseFinal = nn.Linear(in_features=256, out_features=classes, bias=False)
+        self.dense1 = nn.Linear(in_features=30976, out_features=1024, bias=True)
+        self.dense2 = nn.Linear(in_features=1024, out_features=256, bias=True)
+        self.denseFinal = nn.Linear(in_features=256, out_features=classes, bias=True)
 
         self.dropout = nn.Dropout(p=dropout_rate)
 
