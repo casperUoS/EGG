@@ -232,6 +232,10 @@ class SymbolGameDrawReinforce(SymbolGameReinforce):
         self.canvas_size = canvas_size
 
     def forward(self, sender_input, sender_label, receiver_input=None, target_position=None, aux_input=None):
+        # print("sender_input", sender_input.shape)
+        # print("sender_label", sender_label.shape)
+        # # print("receiver_input", receiver_input.shape)
+        # # print("target_position", target_position.shape)
         sender_out = self.sender(sender_input, aux_input)
         if len(sender_out) == 3:
             message, sender_log_prob, sender_entropy = sender_out
@@ -242,9 +246,10 @@ class SymbolGameDrawReinforce(SymbolGameReinforce):
         receiver_output, receiver_log_prob, receiver_entropy = self.receiver(
             message, receiver_input, aux_input
         )
+        # print("receiver_output", receiver_output.shape)
 
-
-
+        if target_position is None:
+            target_position = sender_label
         # message_transformed = self.rotater(message_transformed)
 
         loss, aux_info = self.loss(
@@ -279,6 +284,7 @@ class SymbolGameDrawReinforce(SymbolGameReinforce):
         edge_penalty = edge_penalty * edge_coeff
 
         full_loss = policy_loss + entropy_loss + loss.mean() + edge_penalty.mean()
+        # full_loss = policy_loss + loss.mean() + edge_penalty.mean()
 
         aux_info["baseline"] = self.baseline.predict(loss.detach())
         aux_info["sender_entropy"] = sender_entropy.detach()

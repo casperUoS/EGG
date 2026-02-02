@@ -227,8 +227,8 @@ message=tensor([1., 1.]), receiver_output=tensor([1., 1.]), message_length=None,
             aux[k] = _check_cat([x.aux[k] for x in interactions])
 
         return Interaction(
-            sender_input=_check_cat([x.sender_input for x in interactions], nonSingular=True),
-            receiver_input=_check_cat([x.receiver_input for x in interactions], nonSingular=True),
+            sender_input=_check_cat([x.sender_input for x in interactions], nonSingular=True if interactions[0].sender_input.ndim == 5 else False),
+            receiver_input=_check_cat([x.receiver_input for x in interactions], nonSingular=True if interactions[0].sender_input.ndim == 5 else False),
             labels=_check_cat([x.labels for x in interactions]),
             aux_input=aux_input,
             message=_check_cat([x.message for x in interactions]),
