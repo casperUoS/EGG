@@ -99,7 +99,7 @@ def get_game(config):
             vgg_path=opts.vgg_root,
         )
     if opts.mode == "rf":
-        sender = BezierReinforceWrapper(sender, 28)
+        sender = BezierReinforceWrapper(sender, config['canvas_size'])
         receiver = core.ReinforceWrapper(receiver)
         game = core.SymbolGameDrawReinforce(
             sender,
@@ -139,6 +139,8 @@ if __name__ == "__main__":
         sender_entropy_coeff=0.0000001,
         receiver_entropy_coeff=0.1,
         all_classes=opts.all_classes,
+        canvas_size=32,
+        same_vgg_model=True
     )
 
     # data_folder = os.path.join(opts.root, "train/")

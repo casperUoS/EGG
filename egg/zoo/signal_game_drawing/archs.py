@@ -119,30 +119,38 @@ class DrawReceiver(nn.Module):
         # embed each image (left or right)
         emb = self.return_embeddings(x)
         # embed the signal
+        # if len(signal.size()) == 3:
+        #     signal = signal.unsqueeze(1)
+        # h_s = self.conv1(signal)
+        # h_s = F.relu(h_s)
+        # h_s = self.conv2(h_s)
+        # h_s = F.relu(h_s)
+        # h_s = self.conv3(h_s)
+        # h_s = F.relu(h_s)
+        # h_s = h_s.reshape((h_s.shape[0], -1))  # Flatten
+        #
+        # # Embedding Layer
+        # emb_s = self.dense1(h_s)
+        # embd_s = F.relu(emb_s)
+        # embd_s = self.dropout(embd_s)
+        # embd_s = self.dense2(embd_s)
+        # embd_s = F.relu(embd_s)
+        # embd_s = self.dropout(embd_s)
+        # embd_s = self.denseFinal(embd_s)
         if len(signal.size()) == 3:
             signal = signal.unsqueeze(1)
-        h_s = self.conv1(signal)
-        h_s = F.relu(h_s)
-        h_s = self.conv2(h_s)
-        h_s = F.relu(h_s)
-        h_s = self.conv3(h_s)
-        h_s = F.relu(h_s)
-        h_s = h_s.reshape((h_s.shape[0], -1))  # Flatten
-
-        # Embedding Layer
-        emb_s = self.dense1(h_s)
-        embd_s = F.relu(emb_s)
-        embd_s = self.dropout(embd_s)
-        embd_s = self.dense2(embd_s)
-        embd_s = F.relu(embd_s)
-        embd_s = self.dropout(embd_s)
-        embd_s = self.denseFinal(embd_s)
+            signal = signal.expand(-1,3,-1,-1)
+        h_s = self.vgg(signal)
+        if len(h_s.size()) == 3:
+            h = h_s.squeeze(dim=-1)
+        h_s = h_s.view(h_s.size(0), -1)
+        h_s = self.lin1(h_s)
         # embd_s is of size batch_size x embedding_size
-        embd_s = embd_s.unsqueeze(dim=1)
+        h_s = h_s.unsqueeze(dim=1)
         # h_s is of size batch_size x 1 x embedding_size
-        emdb_s = embd_s.transpose(1, 2)
+        h_s = h_s.transpose(1, 2)
         # h_s is of size batch_size x embedding_size x 1
-        out = torch.bmm(emb, emdb_s)
+        out = torch.bmm(emb, h_s)
         # out is of size batch_size x game_size x 1
         out = out.squeeze(dim=-1)
         # out is of size batch_size x game_size
