@@ -14,11 +14,12 @@ from torchvision import transforms
 
 
 class _BatchIterator:
-    def __init__(self, loader, n_batches, seed=None):
+    def __init__(self, loader, n_batches, seed=None, diff_class=False):
         self.loader = loader
         self.n_batches = n_batches
         self.batches_generated = 0
         self.random_state = np.random.RandomState(seed)
+        self.diff_class = diff_class
 
     def __iter__(self):
         return self
@@ -36,7 +37,14 @@ class _BatchIterator:
         opt = loader.opt
 
         C = len(self.loader.dataset.obj2id.keys())  # number of concepts
-        images_indexes_sender = np.zeros((opt.batch_size, opt.game_size))
+
+        if self.diff_class:
+            game_size_sender = opt.game_size + 1
+        else:
+            game_size_sender = opt.game_size
+
+
+        images_indexes_sender = np.zeros((opt.batch_size, game_size_sender))
 
         for b in range(opt.batch_size):
             if opt.same:
@@ -52,17 +60,22 @@ class _BatchIterator:
                 idxs_sender = []
                 # randomly sample k concepts
                 concepts = self.random_state.choice(C, opt.game_size, replace=False)
+                if self.diff_class:
+                    sample_num = 2
+                else:
+                    sample_num = 1
                 for i, c in enumerate(concepts):
                     ims = loader.dataset.obj2id[c]["ims"]
-                    idx = self.random_state.choice(ims, 2, replace=False)
-                    idxs_sender.append(idx[0])
+                    idx = self.random_state.choice(ims, sample_num, replace=False)
+                    idxs_sender.extend(idx)
+                    sample_num = 1
 
                 images_indexes_sender[b, :] = np.array(idxs_sender)
 
         images_vectors_sender = []
 
         # print(images_indexes_sender)
-        for i in range(opt.game_size):
+        for i in range(game_size_sender):
             batch_indices = images_indexes_sender[:, i]
 
             batch_images = []
@@ -81,6 +94,8 @@ class _BatchIterator:
             y_sender[i] = loader.dataset.targets[target_image_idx]
 
         y_reciever = torch.zeros(opt.batch_size).long()
+        if self.diff_class:
+            images_vectors_sender= images_vectors_sender[1:]
         images_vectors_receiver = torch.zeros_like(images_vectors_sender)
         for i in range(opt.batch_size):
             permutation = torch.randperm(opt.game_size)
@@ -95,6 +110,7 @@ class ImagenetLoader(torch.utils.data.DataLoader):
         self.opt = kwargs.pop("opt")
         self.seed = kwargs.pop("seed")
         self.batches_per_epoch = kwargs.pop("batches_per_epoch")
+        self.diff_class = kwargs.pop("diff_class")
 
         super(ImagenetLoader, self).__init__(*args, **kwargs)
 
@@ -104,7 +120,7 @@ class ImagenetLoader(torch.utils.data.DataLoader):
             seed = np.random.randint(0, 2 ** 32)
         else:
             seed = self.seed
-        return _BatchIterator(self, n_batches=self.batches_per_epoch, seed=seed)
+        return _BatchIterator(self, n_batches=self.batches_per_epoch, seed=seed, diff_class=self.diff_class)
 
 
 

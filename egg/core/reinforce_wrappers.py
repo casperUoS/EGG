@@ -268,6 +268,9 @@ class SymbolGameDrawReinforce(SymbolGameReinforce):
                 + receiver_entropy.mean() * self.receiver_entropy_coeff
         )
 
+        # print(receiver_log_prob.shape)
+        # class_diff_loss = (receiver_log_prob.gather(dim=1, index=target_position.view(-1,1)))
+
         if self.training:
             self.baseline.update(loss.detach())
 
@@ -928,3 +931,65 @@ class TransformerSenderReinforce(nn.Module):
         entropy = torch.cat([entropy, zeros], dim=1)
 
         return sequence, logits, entropy
+
+# class PPOWrapper(nn.Module):
+#     """
+#        PPO Wrapper for an agent. Assumes that the during the forward,
+#        the wrapped agent returns log-probabilities over the potential outputs. During training, the wrapper
+#        transforms them into a tuple of (sample from the multinomial, log-prob of the sample, entropy for the multinomial).
+#        Eval-time the sample is replaced with argmax.
+#
+#        >>> agent = nn.Sequential(nn.Linear(10, 3), nn.LogSoftmax(dim=1))
+#        >>> agent = ReinforceWrapper(agent)
+#        >>> sample, log_prob, entropy = agent(torch.ones(4, 10))
+#        >>> sample.size()
+#        torch.Size([4])
+#        >>> (log_prob < 0).all().item()
+#        1
+#        >>> (entropy > 0).all().item()
+#        1
+#        """
+#
+#     def __init__(self, actor, critic):
+#         super(PPOWrapper, self).__init__()
+#         self.actor = actor
+#         self.critic = critic
+#
+#     def forward(self, *args, **kwargs):
+
+def PPOWrapper(actor, critic):
+    return ReinforceWrapper(actor), ReinforceWrapper(critic)
+
+class SymbolGameDrawPPO(nn.Module):
+
+    def __init__(
+            self,
+            sender_actor: nn.Module,
+            receiver_actor: nn.Module,
+            sender_critic: nn.Module,
+            receiver_critic: nn.Module,
+            sender_entropy_coef: float = 0.0,
+            receiver_entropy_coef: float = 0.0,
+            train_logging_strategy: LoggingStrategy = None,
+            test_logging_strategy: LoggingStrategy = None,
+    ):
+        super(SymbolGameDrawPPO, self).__init__()
+        self.sender_actor = sender_actor
+        self.receiver_actor = receiver_actor
+        self.sender_critic = sender_critic
+        self.receiver_critic = receiver_critic
+
+        self.sender_entropy_coef = sender_entropy_coef
+        self.receiver_entropy_coef = receiver_entropy_coef
+
+        self.train_logging_strategy = (
+            LoggingStrategy()
+            if train_logging_strategy is None
+            else train_logging_strategy
+        )
+        self.test_logging_strategy = (
+            LoggingStrategy()
+            if test_logging_strategy is None
+            else test_logging_strategy
+        )
+

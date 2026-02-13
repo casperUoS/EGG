@@ -45,9 +45,12 @@ class DrawSender(nn.Module):
             self,
             feat_size,
             vgg_path,
-            hidden_size = 512,
+            hidden_size,
+            out_features,
+            # hidden_size = 512,
             num_splines = 3,
-            signal_game = True
+            signal_game = True,
+            critic_mode = False,
     ):
         super(DrawSender,self).__init__()
         self.feat_size = feat_size
@@ -64,7 +67,7 @@ class DrawSender(nn.Module):
 
         self.lin1 = nn.Linear(feat_size, hidden_size, bias=True)
         # self.bn1 = nn.BatchNorm1d(hidden_size)
-        self.lin2 = nn.Linear(hidden_size, 6*num_splines, bias=True)
+        self.lin2 = nn.Linear(hidden_size, out_features, bias=True)
 
 
     def forward(self, x, state=None):
@@ -79,10 +82,22 @@ class DrawSender(nn.Module):
         return x
 
 class DrawReceiver(nn.Module):
-    def __init__(self, game_size, feat_size, vgg_path, dropout_rate=0.4, action_dim=2, embedding_size=50, freeze_vgg=True):
+    def __init__(self,
+                 game_size,
+                 feat_size,
+                 vgg_path,
+                 dropout_rate=0.4,
+                 action_dim=2,
+                 embedding_size=50,
+                 freeze_vgg=True,
+                 same_vgg_model=False,
+                 critic_mode=False,
+    ):
         super(DrawReceiver, self).__init__()
 
         self.game_size = game_size
+
+        self.same_vgg_model = same_vgg_model
 
         self.lin1 = nn.Linear(feat_size, embedding_size, bias=True)
         # self.lin2 = nn.Embedding(vocab_size, embedding_size)
@@ -109,42 +124,48 @@ class DrawReceiver(nn.Module):
         self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(3, 3), stride=(1, 1), bias=True)
         self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3), stride=(1, 1), bias=True)
 
-        self.dense1 = nn.Linear(in_features=30976, out_features=1024, bias=True)
+        self.dense1 = nn.Linear(in_features=43264, out_features=1024, bias=True)
         self.dense2 = nn.Linear(in_features=1024, out_features=256, bias=True)
         self.denseFinal = nn.Linear(in_features=256, out_features=embedding_size, bias=True)
 
+        self.critic_layer = nn.Linear(in_features=game_size, out_features=1, bias=True)
+
         self.dropout = nn.Dropout(p=dropout_rate)
+
+        self.critic_mode = critic_mode
 
     def forward(self, signal, x, _aux_input=None):
         # embed each image (left or right)
         emb = self.return_embeddings(x)
         # embed the signal
-        # if len(signal.size()) == 3:
-        #     signal = signal.unsqueeze(1)
-        # h_s = self.conv1(signal)
-        # h_s = F.relu(h_s)
-        # h_s = self.conv2(h_s)
-        # h_s = F.relu(h_s)
-        # h_s = self.conv3(h_s)
-        # h_s = F.relu(h_s)
-        # h_s = h_s.reshape((h_s.shape[0], -1))  # Flatten
-        #
-        # # Embedding Layer
-        # emb_s = self.dense1(h_s)
-        # embd_s = F.relu(emb_s)
-        # embd_s = self.dropout(embd_s)
-        # embd_s = self.dense2(embd_s)
-        # embd_s = F.relu(embd_s)
-        # embd_s = self.dropout(embd_s)
-        # embd_s = self.denseFinal(embd_s)
-        if len(signal.size()) == 3:
-            signal = signal.unsqueeze(1)
-            signal = signal.expand(-1,3,-1,-1)
-        h_s = self.vgg(signal)
-        if len(h_s.size()) == 3:
-            h = h_s.squeeze(dim=-1)
-        h_s = h_s.view(h_s.size(0), -1)
-        h_s = self.lin1(h_s)
+        if not self.same_vgg_model:
+            if len(signal.size()) == 3:
+                signal = signal.unsqueeze(1)
+            h_s = self.conv1(signal)
+            h_s = F.relu(h_s)
+            h_s = self.conv2(h_s)
+            h_s = F.relu(h_s)
+            h_s = self.conv3(h_s)
+            h_s = F.relu(h_s)
+            h_s = h_s.reshape((h_s.shape[0], -1))  # Flatten
+
+            # Embedding Layer
+            emb_s = self.dense1(h_s)
+            embd_s = F.relu(emb_s)
+            embd_s = self.dropout(embd_s)
+            embd_s = self.dense2(embd_s)
+            embd_s = F.relu(embd_s)
+            embd_s = self.dropout(embd_s)
+            h_s = self.denseFinal(embd_s)
+        else:
+            if len(signal.size()) == 3:
+                signal = signal.unsqueeze(1)
+                signal = signal.expand(-1,3,-1,-1)
+            h_s = self.vgg(signal)
+            if len(h_s.size()) == 3:
+                h = h_s.squeeze(dim=-1)
+            h_s = h_s.view(h_s.size(0), -1)
+            h_s = self.lin1(h_s)
         # embd_s is of size batch_size x embedding_size
         h_s = h_s.unsqueeze(dim=1)
         # h_s is of size batch_size x 1 x embedding_size
@@ -154,7 +175,10 @@ class DrawReceiver(nn.Module):
         # out is of size batch_size x game_size x 1
         out = out.squeeze(dim=-1)
         # out is of size batch_size x game_size
-        log_probs = F.log_softmax(out, dim=1)
+        if not self.critic_mode:
+            log_probs = F.log_softmax(out, dim=1)
+        else:
+            log_probs = self.critic_layer(out)
         return log_probs
 
     def return_embeddings(self, x):

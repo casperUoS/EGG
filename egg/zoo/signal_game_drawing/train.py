@@ -14,6 +14,7 @@ from torchvision import transforms
 from torchvision.datasets import CIFAR10
 
 import egg.core as core
+from egg.core.reinforce_wrappers import PPOWrapper
 from egg.zoo.signal_game.archs import InformedSender, Receiver
 from egg.zoo.signal_game_drawing.features import ImageNetFeat, ImagenetLoader, CIFAR10WithObj2ID
 from egg.zoo.signal_game_drawing.archs import DrawSender, DrawReceiver, DrawReceiverClassifier
@@ -86,6 +87,8 @@ def get_game(config):
     sender = DrawSender(
         feat_size=feat_size,
         vgg_path=opts.vgg_root,
+        hidden_size=512,
+        out_features=6*config['num_splines'],
         signal_game=False if config['all_classes'] else True,
     )
     if config["all_classes"]:
@@ -97,8 +100,10 @@ def get_game(config):
             game_size=config['game_size'],
             feat_size=feat_size,
             vgg_path=opts.vgg_root,
+            same_vgg_model=config['same_vgg_model'],
+            # out_features=50,
         )
-    if opts.mode == "rf":
+    if config['mode'] == "rf":
         sender = BezierReinforceWrapper(sender, config['canvas_size'])
         receiver = core.ReinforceWrapper(receiver)
         game = core.SymbolGameDrawReinforce(
@@ -108,7 +113,29 @@ def get_game(config):
             sender_entropy_coeff=config['sender_entropy_coeff'],
             receiver_entropy_coeff=config['receiver_entropy_coeff'],
         )
-    elif opts.mode == "gs":
+    elif config['mode'] == "ppo":
+        sender_actor = sender
+        receiver_actor = receiver
+        sender_critic = DrawSender(
+        feat_size=feat_size,
+        vgg_path=opts.vgg_root,
+        hidden_size=512,
+        out_features=6*config['num_splines'],
+        signal_game=False if config['all_classes'] else True,
+        critic_mode=True
+        )
+        receiver_critic = receiver = DrawReceiver(
+            game_size=config['game_size'],
+            feat_size=feat_size,
+            vgg_path=opts.vgg_root,
+            same_vgg_model=config['same_vgg_model'],
+            # out_features=50,
+            critic_mode=True
+        )
+        sender_actor, sender_critic = PPOWrapper(sender_actor, sender_critic)
+        receiver_actor, receiver_critic = PPOWrapper(receiver_actor, receiver_critic)
+        game = core.SymbolGameDrawPPO()
+    elif config['mode'] == "gs":
         sender = core.GumbelSoftmaxWrapper(sender, temperature=opts.gs_tau)
         game = core.SymbolGameGS(sender, receiver, loss_nll)
     else:
@@ -140,7 +167,10 @@ if __name__ == "__main__":
         receiver_entropy_coeff=0.1,
         all_classes=opts.all_classes,
         canvas_size=32,
-        same_vgg_model=True
+        num_splines=3,
+        same_vgg_model=False,
+        mode=opts.mode,
+        diff_class=False,
     )
 
     # data_folder = os.path.join(opts.root, "train/")
@@ -167,6 +197,7 @@ if __name__ == "__main__":
                 opt=opts,
                 batches_per_epoch=config['batches_per_epoch'],
                 seed=None,
+                diff_class=config['diff_class'],
             )
             validation_loader = ImagenetLoader(
                 test_dataset,
@@ -174,6 +205,7 @@ if __name__ == "__main__":
                 batch_size=config['batch_size'],
                 batches_per_epoch=config['batches_per_epoch'],
                 seed=21,
+                diff_class=config['diff_class'],
             )
         game = get_game(config)
         optimizer = core.build_optimizer(game.parameters())
