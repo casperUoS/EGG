@@ -56,6 +56,7 @@ def parse_arguments():
     parser.add_argument("--gs_tau", type=float, default=1.0, help="GS temperature")
     parser.add_argument("--sample_mode", default="all", help="'all': display all classes. 'single' display one class, 'double' display two classes")
     parser.add_argument("--all_classes", type=bool, default=False, help="Turns signal game into classification game")
+    parser.add_argument("--diff_class", type=bool, default=False, help="wether to get different instance of class for receiver")
 
     opt = core.init(parser)
     assert opt.game_size >= 1
@@ -170,7 +171,7 @@ if __name__ == "__main__":
         num_splines=3,
         same_vgg_model=False,
         mode=opts.mode,
-        diff_class=False,
+        diff_class=opts.diff_class,
     )
 
     # data_folder = os.path.join(opts.root, "train/")
