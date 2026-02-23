@@ -43,7 +43,7 @@ class ReinforceWrapper(nn.Module):
         self.agent = agent
 
     def forward(self, *args, **kwargs):
-        logits = self.agent(*args, **kwargs)
+        logits, emb = self.agent(*args, **kwargs)
 
         distr = Categorical(logits=logits)
         entropy = distr.entropy()
@@ -54,7 +54,7 @@ class ReinforceWrapper(nn.Module):
             sample = logits.argmax(dim=1)
         log_prob = distr.log_prob(sample)
 
-        return sample, log_prob, entropy
+        return sample, log_prob, entropy, emb
 
 
 def _verify_batch_sizes(loss, sender_probs, receiver_probs):
@@ -241,9 +241,9 @@ class SymbolGameDrawReinforce(SymbolGameReinforce):
             message, sender_log_prob, sender_entropy = sender_out
             sender_output = None
         else:
-            message, sender_log_prob, sender_entropy, sender_output = sender_out
+            message, sender_log_prob, sender_entropy, sender_output, vgg_features = sender_out
         message = self.rotater(message)
-        receiver_output, receiver_log_prob, receiver_entropy = self.receiver(
+        receiver_output, receiver_log_prob, receiver_entropy, receiver_features = self.receiver(
             message, receiver_input, aux_input
         )
         # print("receiver_output", receiver_output.shape)
@@ -307,6 +307,8 @@ class SymbolGameDrawReinforce(SymbolGameReinforce):
             aux=aux_info,
             sender_output=sender_output.detach() if sender_output is not None else None,
             edge_penalty=edge_penalty,
+            vgg_features=vgg_features,
+            receiver_features=receiver_features,
         )
 
         return full_loss, interaction

@@ -23,6 +23,8 @@ class LoggingStrategy:
     store_message_length: bool = True
     store_sender_output: bool = True
     store_edge_penalty: bool = True
+    store_vgg_features: bool = True
+    store_receiver_features: bool = True
 
     def filtered_interaction(
         self,
@@ -36,6 +38,8 @@ class LoggingStrategy:
         aux: Dict[str, torch.Tensor],
         sender_output: Optional[torch.Tensor],
         edge_penalty: Optional[torch.Tensor],
+        vgg_features: Optional[torch.Tensor],
+        receiver_features: Optional[torch.Tensor],
     ):
 
         return Interaction(
@@ -49,6 +53,8 @@ class LoggingStrategy:
             aux=aux,
             sender_output=sender_output if self.store_sender_output else None,
             edge_penalty= edge_penalty if self.store_edge_penalty else None,
+            vgg_features= vgg_features if self.store_vgg_features else None,
+            receiver_features= receiver_features if self.store_receiver_features else None,
         )
 
     @classmethod
@@ -75,6 +81,8 @@ class Interaction:
     receiver_output: Optional[torch.Tensor]
 
     edge_penalty: Optional[torch.Tensor]
+    vgg_features: Optional[torch.Tensor]
+    receiver_features: Optional[torch.Tensor]
 
     # auxilary info
     message_length: Optional[torch.Tensor]
@@ -128,7 +136,9 @@ class Interaction:
             receiver_output=_check_cat([x.receiver_output for x in interactions]),
             aux=_combine_aux_dicts(self.aux, other.aux),
             sender_output=_check_cat([x.sender_output for x in interactions]),
-            edge_penantly=_check_cat([x.edge_penantly for x in interactions]),
+            edge_penalty=_check_cat([x.edge_penalty for x in interactions]),
+            vgg_features=_check_cat([x.vgg_features for x in interactions]),
+            receiver_features=_check_cat([x.receiver_features for x in interactions]),
         )
 
     @property
@@ -237,6 +247,8 @@ message=tensor([1., 1.]), receiver_output=tensor([1., 1.]), message_length=None,
             aux=aux,
             sender_output=_check_cat([x.sender_output for x in interactions]),
             edge_penalty=_check_cat([x.edge_penalty for x in interactions]),
+            vgg_features=_check_cat([x.vgg_features for x in interactions]),
+            receiver_features=_check_cat([x.receiver_features for x in interactions]),
         )
 
     @staticmethod

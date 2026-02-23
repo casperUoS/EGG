@@ -102,7 +102,7 @@ class BezierReinforceWrapper(nn.Module):
         return canvas
 
     def forward(self, *args, **kwargs):
-        mu = self.agent(*args, **kwargs)
+        mu, vgg_features = self.agent(*args, **kwargs)
 
         std = self.log_std.exp()
 
@@ -125,4 +125,4 @@ class BezierReinforceWrapper(nn.Module):
 
         sketch = self.paint_multiple_splines(sample)
 
-        return sketch, log_prob, entropy, sample
+        return sketch, log_prob, entropy, sample, vgg_features

@@ -71,10 +71,8 @@ class _BatchIterator:
                     sample_num = 1
 
                 images_indexes_sender[b, :] = np.array(idxs_sender)
-
         images_vectors_sender = []
 
-        # print(images_indexes_sender)
         for i in range(game_size_sender):
             batch_indices = images_indexes_sender[:, i]
 

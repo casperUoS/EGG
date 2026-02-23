@@ -77,9 +77,10 @@ class DrawSender(nn.Module):
         x = self.vgg(x)
         x = x.view(x.size(0), -1)
         x = torch.relu(self.lin1(x))
+        embeds = x
         # x = self.bn1(x)
         x = self.lin2(x)
-        return x
+        return x, embeds
 
 class DrawReceiver(nn.Module):
     def __init__(self,
@@ -179,7 +180,7 @@ class DrawReceiver(nn.Module):
             log_probs = F.log_softmax(out, dim=1)
         else:
             log_probs = self.critic_layer(out)
-        return log_probs
+        return log_probs, h_s
 
     def return_embeddings(self, x):
         # embed each image (left or right)
