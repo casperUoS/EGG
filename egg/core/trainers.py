@@ -54,7 +54,8 @@ class Trainer:
         callbacks: Optional[List[Callback]] = None,
         grad_norm: float = None,
         aggregate_interaction_logs: bool = True,
-        run = None
+        run = None,
+        fixed_vision=True,
     ):
         """
         :param game: A nn.Module that implements forward(); it is expected that forward returns a tuple of (loss, d),

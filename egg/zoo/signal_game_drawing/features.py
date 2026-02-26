@@ -11,6 +11,8 @@ import torch
 import torch.nn.parallel
 import torch.utils.data as data
 from torchvision import transforms
+from torchvision.datasets import MNIST
+from torchvision.transforms import v2
 
 
 class _BatchIterator:
@@ -122,11 +124,9 @@ class ImagenetLoader(torch.utils.data.DataLoader):
 
 
 
-class CIFAR10WithObj2ID(data.Dataset):
+class MNISTWithObj2ID(data.Dataset):
     def __init__(self, root, train=True, download=False):
-        from torchvision.datasets import CIFAR10
-
-        self.dataset = CIFAR10(root=root, train=train, download=download, transform=transforms.ToTensor())
+        self.dataset = MNIST(root=root, train=train, download=download, transform=transforms.ToTensor())
         self.data = self.dataset.data
         self.targets = self.dataset.targets
         self.create_obj2id()
@@ -144,10 +144,12 @@ class CIFAR10WithObj2ID(data.Dataset):
         # Populate with image indices for each class
         # Use self.targets instead of iterating over self.data
         for i, label in enumerate(self.targets):
+            label = int(label)
             self.obj2id[label]["ims"].append(i)
 
     def __getitem__(self, index):
         img, _target = self.dataset[index]
+        # img_3_channels = v2.Grayscale(num_output_channels=3)(img)
         return img, index
 
     def __len__(self):

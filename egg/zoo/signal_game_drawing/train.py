@@ -9,15 +9,16 @@ import os
 import torch
 import torch.nn.functional as F
 import torchvision.datasets
+from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from torchvision.datasets import CIFAR10
+from torchvision.datasets import CIFAR10, MNIST
 
 import egg.core as core
 from egg.core.reinforce_wrappers import PPOWrapper
 from egg.zoo.signal_game.archs import InformedSender, Receiver
-from egg.zoo.signal_game_drawing.features import ImageNetFeat, ImagenetLoader, CIFAR10WithObj2ID
-from egg.zoo.signal_game_drawing.archs import DrawSender, DrawReceiver, DrawReceiverClassifier
+from egg.zoo.signal_game_drawing.features import ImageNetFeat, ImagenetLoader, MNISTWithObj2ID
+from egg.zoo.signal_game_drawing.archs import DrawSender, DrawReceiver, DrawReceiverClassifier, MNIST_Vision
 from egg.zoo.signal_game_drawing.wrappers import BezierReinforceWrapper
 import wandb
 
@@ -85,9 +86,12 @@ def loss_nll(
 
 def get_game(config):
     feat_size = 512
+    vision_model = MNIST_Vision()
+    vision_model.load_state_dict(torch.load(opts.vgg_root))
     sender = DrawSender(
         feat_size=feat_size,
         vgg_path=opts.vgg_root,
+        vision_model=vision_model,
         hidden_size=config["sender_emb_size"],
         out_features=6*config['num_splines'],
         signal_game=False if config['all_classes'] else True,
@@ -101,6 +105,7 @@ def get_game(config):
             game_size=config['game_size'],
             feat_size=feat_size,
             vgg_path=opts.vgg_root,
+            vision_model=vision_model,
             same_vgg_model=config['same_vgg_model'],
             # out_features=50,
         )
@@ -118,17 +123,19 @@ def get_game(config):
         sender_actor = sender
         receiver_actor = receiver
         sender_critic = DrawSender(
-        feat_size=feat_size,
-        vgg_path=opts.vgg_root,
-        hidden_size=512,
-        out_features=6*config['num_splines'],
-        signal_game=False if config['all_classes'] else True,
-        critic_mode=True
+            feat_size=feat_size,
+            vgg_path=opts.vgg_root,
+            hidden_size=512,
+            vision_model=vision_model,
+            out_features=6*config['num_splines'],
+            signal_game=False if config['all_classes'] else True,
+            critic_mode=True
         )
         receiver_critic = receiver = DrawReceiver(
             game_size=config['game_size'],
             feat_size=feat_size,
             vgg_path=opts.vgg_root,
+            vision_model=vision_model,
             same_vgg_model=config['same_vgg_model'],
             # out_features=50,
             critic_mode=True
@@ -154,7 +161,7 @@ if __name__ == "__main__":
     if opts.all_classes:
         project = "REINFORCE Sketch Classification Game"
     else:
-        project = "REINFORCE Sketch Lewis Game"
+        project = "REINFORCE Sketch Lewis Game MNIST"
 
     config = dict(
         epochs=opts.n_epochs,
@@ -165,7 +172,7 @@ if __name__ == "__main__":
         dataset='cifar10',
         game_size=opts.game_size,
         sender_entropy_coeff=0.0000001,
-        receiver_entropy_coeff=0.1,
+        receiver_entropy_coeff=0.01,
         all_classes=opts.all_classes,
         canvas_size=32,
         num_splines=3,
@@ -176,8 +183,8 @@ if __name__ == "__main__":
     )
 
     # data_folder = os.path.join(opts.root, "train/")
-    cifar_path = "data/cifar10"
-    dataset_exists = os.path.exists(os.path.join(cifar_path, "cifar-10-batches-py"))
+    mnist_path = "data/mnist"
+    dataset_exists = os.path.exists(os.path.join(mnist_path, "mnist-batches-py"))
     # dataset = ImageNetFeat(root=data_folder)
 
     with wandb.init(project=project, config=config) as run:
@@ -185,13 +192,13 @@ if __name__ == "__main__":
 
 
         if config["all_classes"]:
-            train_dataset = CIFAR10(root=cifar_path, train=True, download=not dataset_exists, transform=transforms.ToTensor())
-            test_dataset = CIFAR10(root=cifar_path, train=False, download=not dataset_exists, transform=transforms.ToTensor())
+            train_dataset = MNIST(root=mnist_path, train=True, download=not dataset_exists, transform=transforms.ToTensor())
+            test_dataset = MNIST(root=mnist_path, train=False, download=not dataset_exists, transform=transforms.ToTensor())
             train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True)
             validation_loader = DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True)
         else:
-            train_dataset = CIFAR10WithObj2ID(cifar_path, train=True, download=not dataset_exists)
-            test_dataset = CIFAR10WithObj2ID(cifar_path, train=False, download=not dataset_exists)
+            train_dataset = MNISTWithObj2ID(mnist_path, train=True, download=not dataset_exists)
+            test_dataset = MNISTWithObj2ID(mnist_path, train=False, download=not dataset_exists)
             train_loader = ImagenetLoader(
                 train_dataset,
                 batch_size=config['batch_size'],
@@ -224,7 +231,8 @@ if __name__ == "__main__":
             train_data=train_loader,
             validation_data=validation_loader,
             callbacks=callbacks,
-            run=run
+            run=run,
+            fixed_vision=True,
         )
 
         trainer.train(n_epochs=config['epochs'])

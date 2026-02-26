@@ -47,6 +47,7 @@ class DrawSender(nn.Module):
             vgg_path,
             hidden_size,
             out_features,
+            vision_model,
             # hidden_size = 512,
             num_splines = 3,
             signal_game = True,
@@ -62,31 +63,56 @@ class DrawSender(nn.Module):
 
         self.vgg = torch.load(vgg_path, weights_only=False)
 
-        for param in self.vgg.parameters():
-            param.requires_grad = False
+        # for param in self.vgg.parameters():
+        #     param.requires_grad = False
 
         self.lin1 = nn.Linear(feat_size, hidden_size, bias=True)
         # self.bn1 = nn.BatchNorm1d(hidden_size)
         self.lin2 = nn.Linear(hidden_size, out_features, bias=True)
+
+        self.encoderA = nn.Sequential(nn.Conv2d(1, 8, 3, stride=2, padding=1), nn.ReLU(True),
+                                      nn.Conv2d(8, 16, 3, stride=2, padding=1), nn.ReLU(True),
+                                      nn.Conv2d(16, 32, 3, stride=2, padding=0), nn.ReLU(True),
+                                      nn.Flatten(), nn.Linear(288, 128), nn.ReLU(True))
+
+        self.fc1 = nn.Linear(128, 128)
+        self.fc2 = nn.Linear(128, out_features)
+
+        self.vision_model = vision_model
+        for param in self.vision_model.parameters():
+            param.requires_grad = False
+        self.vision_model.eval()
+
+    def train(self, mode=True):
+        super().train(mode)
+        self.vision_model.eval()  # always keep vision_model in eval mode
+        return self
 
 
     def forward(self, x, state=None):
         if self.signal_game:
             x = x[0]
 
-        x = self.vgg(x)
-        x = x.view(x.size(0), -1)
-        x = torch.relu(self.lin1(x))
-        embeds = x
-        # x = self.bn1(x)
-        x = self.lin2(x)
-        return x, embeds
+        # x = self.vgg(x)
+        # x = x.view(x.size(0), -1)
+        # x = torch.relu(self.lin1(x))
+        # embeds = x
+        # # x = self.bn1(x)
+        # x = self.lin2(x)
+
+        embed = self.vision_model(x)
+        print(embed[0])
+        x = F.relu(self.fc1(embed))
+        x = self.fc2(x)
+        # print(x[0])
+        return x, embed
 
 class DrawReceiver(nn.Module):
     def __init__(self,
                  game_size,
                  feat_size,
                  vgg_path,
+                 vision_model,
                  dropout_rate=0.4,
                  action_dim=2,
                  embedding_size=50,
@@ -112,8 +138,8 @@ class DrawReceiver(nn.Module):
 
         self.vgg = torch.load(vgg_path, weights_only=False)
 
-        for param in self.vgg.parameters():
-            param.requires_grad = False
+        # for param in self.vgg.parameters():
+        #     param.requires_grad = False
 
         self.enc = nn.Sequential(
             nn.AdaptiveAvgPool2d((8, 8)),
@@ -134,6 +160,23 @@ class DrawReceiver(nn.Module):
         self.dropout = nn.Dropout(p=dropout_rate)
 
         self.critic_mode = critic_mode
+
+        # self.encoderB = nn.Sequential(nn.Conv2d(1, 8, 3, stride=2, padding=1), nn.ReLU(True),
+        #                               nn.Conv2d(8, 16, 3, stride=2, padding=1), nn.ReLU(True),
+        #                               nn.Conv2d(16, 32, 3, stride=2, padding=0), nn.ReLU(True),
+        #                               nn.Flatten(), nn.Linear(288, 128), nn.ReLU(True), nn.Linear(128, embedding_size))
+
+        self.vision_model = vision_model
+        for param in self.vision_model.parameters():
+            param.requires_grad = False
+        self.vision_model.eval()
+
+        self.fc_mnist = nn.Linear(in_features=128, out_features=embedding_size)
+
+    def train(self, mode=True):
+        super().train(mode)
+        self.vision_model.eval()  # always keep vision_model in eval mode
+        return self
 
     def forward(self, signal, x, _aux_input=None):
         # embed each image (left or right)
@@ -187,14 +230,20 @@ class DrawReceiver(nn.Module):
         embs = []
         for i in range(self.game_size):
             h = x[i]
-            h = self.vgg(h)
-            if len(h.size()) == 3:
-                h = h.squeeze(dim=-1)
-            h = h.view(h.size(0), -1)
-            h_i = self.lin1(h)
-            # h_i are batch_size x embedding_size
+
+            # h = self.vgg(h)
+            # if len(h.size()) == 3:
+            #     h = h.squeeze(dim=-1)
+            # h = h.view(h.size(0), -1)
+            # h_i = self.lin1(h)
+            # # h_i are batch_size x embedding_size
+            # h_i = h_i.unsqueeze(dim=1)
+            # # h_i are now batch_size x 1 x embedding_size
+
+            h_i = self.vision_model(h)
+            h_i = self.fc_mnist(h_i)
             h_i = h_i.unsqueeze(dim=1)
-            # h_i are now batch_size x 1 x embedding_size
+
             embs.append(h_i)
         h = torch.cat(embs, dim=1)
         return h
@@ -241,3 +290,30 @@ class DrawReceiverClassifier(nn.Module):
         out = self.denseFinal(embd_s)
         log_probs = F.log_softmax(out, dim=1)
         return log_probs
+
+
+class MNIST_Vision(nn.Module):
+    def __init__(self):
+        super(MNIST_Vision, self).__init__()
+        # self.mnist_vision = nn.Sequential(nn.Conv2d(1, 8, 3, stride=2, padding=1), nn.ReLU(True),
+        #                              nn.Conv2d(8, 16, 3, stride=2, padding=1), nn.ReLU(True),
+        #                              nn.Conv2d(16, 32, 3, stride=2, padding=0), nn.ReLU(True),
+        #                              nn.Flatten(), nn.Linear(5408, 128))
+        self.conv1 = nn.Conv2d(1, 32, 3, 1)
+        self.conv2 = nn.Conv2d(32, 64, 3, 1)
+        self.dropout1 = nn.Dropout(0.25)
+        self.dropout2 = nn.Dropout(0.5)
+        self.fc1 = nn.Linear(9216, 128)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = F.relu(x)
+        x = self.conv2(x)
+        x = F.relu(x)
+        x = F.max_pool2d(x, 2)
+        x = self.dropout1(x)
+        x = torch.flatten(x, 1)
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.dropout2(x)
+        return x
