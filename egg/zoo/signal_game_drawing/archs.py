@@ -64,10 +64,16 @@ class DrawSender(nn.Module):
 
         for param in self.vgg.parameters():
             param.requires_grad = False
+        self.vgg.eval()
 
         self.lin1 = nn.Linear(feat_size, hidden_size, bias=True)
         # self.bn1 = nn.BatchNorm1d(hidden_size)
         self.lin2 = nn.Linear(hidden_size, out_features, bias=True)
+
+    def train(self, mode=True):
+        super().train(mode)
+        self.vgg.eval()  # always keep vision_model in eval mode
+        return self
 
 
     def forward(self, x, state=None):
@@ -114,6 +120,7 @@ class DrawReceiver(nn.Module):
 
         for param in self.vgg.parameters():
             param.requires_grad = False
+        self.vgg.eval()
 
         self.enc = nn.Sequential(
             nn.AdaptiveAvgPool2d((8, 8)),
@@ -134,6 +141,11 @@ class DrawReceiver(nn.Module):
         self.dropout = nn.Dropout(p=dropout_rate)
 
         self.critic_mode = critic_mode
+    
+    def train(self, mode=True):
+        super().train(mode)
+        self.vgg.eval()  # always keep vision_model in eval mode
+        return self
 
     def forward(self, signal, x, _aux_input=None):
         # embed each image (left or right)

@@ -11,3 +11,4 @@ wandb
 submitit
 timm
 pandas
+matplotlib
