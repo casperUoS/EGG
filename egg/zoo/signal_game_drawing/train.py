@@ -12,13 +12,14 @@ import torchvision.datasets
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
+from torchvision.transforms.v2 import ToPILImage
 
 import egg.core as core
 from egg.core.reinforce_wrappers import PPOWrapper
 from egg.zoo.signal_game.archs import InformedSender, Receiver
 from egg.zoo.signal_game_drawing.features import ImageNetFeat, ImagenetLoader, CIFAR10WithObj2ID
-from egg.zoo.signal_game_drawing.archs import DrawSender, DrawReceiver, DrawReceiverClassifier
-from egg.zoo.signal_game_drawing.wrappers import BezierReinforceWrapper
+from egg.zoo.signal_game_drawing.archs import DrawSender, DrawReceiver, DrawReceiverClassifier, DrawSenderDiff
+from egg.zoo.signal_game_drawing.wrappers import BezierReinforceWrapper, DiffRasterWrapper
 import wandb
 
 
@@ -68,6 +69,7 @@ def loss(_sender_input, _message, _receiver_input, receiver_output, labels, _aux
     """
     Accuracy loss - non-differetiable hence cannot be used with GS
     """
+    # print(labels)
     acc = (labels == receiver_output).float()
     return -acc, {"acc": acc}
 
@@ -82,16 +84,53 @@ def loss_nll(
     acc = (labels == receiver_output.argmax(dim=1)).float().mean()
     return nll, {"acc": acc}
 
+def loss_hinge(
+    _sender_input, message, _receiver_input, receiver_output, labels, _aux_input
+):
+    """
+    Hinge loss - differentiable and can be used with both GS and Reinforce
+    """
+    # print(receiver_output.shape)
+    # labels = labels.long()
+
+    canvas_size = message.shape[-1]
+
+    top_edge = message[:, 0, :].sum(dim=1)
+    bottom_edge = message[:, -1, :].sum(dim=1)
+    left_edge = message[:, :, 0].sum(dim=1)
+    right_edge = message[:, :, -1].sum(dim=1)
+
+    edge_penalty = (top_edge + bottom_edge + left_edge + right_edge)
+
+    edge_coeff = 0.0001
+    edge_loss = edge_penalty * edge_coeff
+
+    hinge_loss = F.multi_margin_loss(receiver_output, labels, reduction="none")
+
+    total_loss = hinge_loss + edge_loss.mean()
+
+    acc = (labels == receiver_output.argmax(dim=1)).float()
+    return total_loss, {"acc": acc, "edge_penalty": edge_loss}
+
 
 def get_game(config):
     feat_size = 512
-    sender = DrawSender(
-        feat_size=feat_size,
-        vgg_path=opts.vgg_root,
-        hidden_size=config["sender_emb_size"],
-        out_features=6*config['num_splines'],
-        signal_game=False if config['all_classes'] else True,
-    )
+    if config['mode'] == "ds":
+        sender = DrawSenderDiff(
+            feat_size=feat_size,
+            vgg_path=opts.vgg_root,
+            hidden_size=config["sender_emb_size"],
+            # out_features=6 * config['num_splines'],
+            signal_game=False if config['all_classes'] else True,
+        )
+    else:
+        sender = DrawSender(
+            feat_size=feat_size,
+            vgg_path=opts.vgg_root,
+            hidden_size=config["sender_emb_size"],
+            out_features=6*config['num_splines'],
+            signal_game=False if config['all_classes'] else True,
+        )
     if config["all_classes"]:
         receiver = DrawReceiverClassifier(
             vgg_path=opts.vgg_root,
@@ -139,6 +178,9 @@ def get_game(config):
     elif config['mode'] == "gs":
         sender = core.GumbelSoftmaxWrapper(sender, temperature=opts.gs_tau)
         game = core.SymbolGameGS(sender, receiver, loss_nll)
+    elif config['mode'] == "ds":
+        sender = DiffRasterWrapper(sender, config['canvas_size'])
+        game = core.SymbolGameGS(sender, receiver, loss_hinge)
     else:
         raise RuntimeError(f"Unknown training mode: {opts.mode}")
 
@@ -151,7 +193,9 @@ if __name__ == "__main__":
 
     opts = parse_arguments()
 
-    if opts.all_classes:
+    if opts.mode == "ds":
+        project = "Diff Sketch Lewis Game"
+    elif opts.all_classes:
         project = "REINFORCE Sketch Classification Game"
     else:
         project = "REINFORCE Sketch Lewis Game"
@@ -224,7 +268,8 @@ if __name__ == "__main__":
             train_data=train_loader,
             validation_data=validation_loader,
             callbacks=callbacks,
-            run=run
+            run=run,
+            vgg_path=opts.vgg_root,
         )
 
         trainer.train(n_epochs=config['epochs'])
@@ -232,6 +277,16 @@ if __name__ == "__main__":
         # 1. Run inference on the validation set to get a batch of interactions
         print("Generating sample sketch...")
         val_loss, interaction = trainer.eval()
+
+        symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
+
+        print("Symbolicity score:", symbolicity_loss)
+        print("Symbolicity accuracy:", symbolicity_acc)
+        print("Semanticity score:", semantic_cor)
+
+        wandb.log({"symbolicity_loss": symbolicity_loss})
+        wandb.log({"symbolicity_acc": symbolicity_acc})
+        wandb.log({"semantic_cor": semantic_cor})
 
         for sample_mode in ["all","single","double"]:
 
@@ -241,7 +296,7 @@ if __name__ == "__main__":
             # receiver_input = interaction.receiver_input.detach().cpu()
             receiver_output = interaction.receiver_output.detach().cpu()
             labels = interaction.labels.detach().cpu()
-            edge_penalty = interaction.edge_penalty.detach().cpu()
+            edge_penalty = interaction.edge_penalty.detach().cpu() if not None else 0.0
 
             # 3. Plot and save one sample
             import matplotlib.pyplot as plt
@@ -293,6 +348,7 @@ if __name__ == "__main__":
                 sketches = sketches[single_class_idx]
                 labels = labels[single_class_idx]
                 edge_penalty = edge_penalty[single_class_idx]
+                # edge_penalty = 0.0
                 if sender_input.ndim == 5:
                     sender_input = sender_input.index_select(dim=1, index=single_class_idx)
                 else:
@@ -304,10 +360,13 @@ if __name__ == "__main__":
                 sketches = torch.cat((sketches[class1_idx], sketches[class2_idx]))
                 labels = torch.cat([labels[class1_idx], labels[class2_idx]])
                 edge_penalty = torch.cat([edge_penalty[class1_idx], edge_penalty[class2_idx]])
+                # edge_penalty = 0.0
                 if sender_input.ndim == 5:
                     sender_input = torch.cat([sender_input.index_select(dim=1, index=class1_idx), sender_input.index_select(dim=1, index=class2_idx)], dim=1)
                 else:
                     sender_input = torch.cat([sender_input[class1_idx], sender_input[class2_idx]])
+
+            long_img = []
 
             for i in range(num_samples):
                 # Calculate which column pair and row this sample belongs to
@@ -330,9 +389,13 @@ if __name__ == "__main__":
                 if original_sample.max() > 1.0:
                     original_sample = original_sample / 255.0
 
+                long_img.append(original_sample)
+                long_img.append(sketch_sample.unsqueeze(2).expand(-1, -1, 3))
+
                 class_idx = labels[i].item()
                 class_name = class_names[class_idx]
                 edge_penalty_sample = edge_penalty[i]
+                # edge_penalty_sample = 0.0
 
                 # Calculate column indices for original and sketch
                 orig_col = col_pair * 2
@@ -348,6 +411,7 @@ if __name__ == "__main__":
                 axes[row, sketch_col].set_title(f"Sketch: {class_name}, edge_penalty: {edge_penalty_sample}")
                 axes[row, sketch_col].axis('off')
 
+
             # Hide unused subplots
             for i in range(num_samples, num_rows * num_cols):
                 col_pair = i // max_rows
@@ -355,105 +419,111 @@ if __name__ == "__main__":
                 axes[row, col_pair * 2].axis('off')
                 axes[row, col_pair * 2 + 1].axis('off')
 
+            long_img = torch.cat(long_img, dim=1).detach().cpu()
+
             plt.tight_layout()
             plt.suptitle("Original Images vs Sketches from Trained Sender", y=1.00)
             wandb.log({f"plot_{sample_mode}": fig})
 
-        # ── t-SNE scatter plots ──────────────────────────────────────────────────
-        from sklearn.manifold import TSNE
+            long_img = ToPILImage()(long_img.permute(2, 0, 1))
+            wandb.log({f"long_img_{sample_mode}": wandb.Image(long_img)})
 
-        # Re-collect full-batch tensors (outside the sample_mode loop)
-        all_sketches     = interaction.message.detach().cpu()       # (N, C, H, W) or (N, H, W)
-        all_sender_input = interaction.sender_input.detach().cpu()  # (N, C, H, W) or (game_size, N, C, H, W)
-        all_labels       = interaction.labels.detach().cpu()        # (N,)
-        all_vgg_features = interaction.vgg_features.detach().cpu()
-        all_receiver_features = interaction.receiver_features.detach().cpu()
+        if config["mode"] != "ds":
+            # ── t-SNE scatter plots ──────────────────────────────────────────────────
+            from sklearn.manifold import TSNE
 
-        # Flatten referents: take the target image (index 0 along game_size dim if needed)
-        refs_flat = all_sender_input[0].reshape(all_sender_input.shape[1], -1).numpy()
+            # Re-collect full-batch tensors (outside the sample_mode loop)
+            all_sketches     = interaction.message.detach().cpu()       # (N, C, H, W) or (N, H, W)
+            all_sender_input = interaction.sender_input.detach().cpu()  # (N, C, H, W) or (game_size, N, C, H, W)
+            all_labels       = interaction.labels.detach().cpu()        # (N,)
+            all_vgg_features = interaction.vgg_features.detach().cpu()
+            all_receiver_features = interaction.receiver_features.detach().cpu()
 
-        # Flatten utterances (sketches)
-        utts_flat = all_sketches.reshape(all_sketches.shape[0], -1).numpy()
+            # Flatten referents: take the target image (index 0 along game_size dim if needed)
+            refs_flat = all_sender_input[0].reshape(all_sender_input.shape[1], -1).numpy()
 
-        colors = all_labels.numpy()
+            # Flatten utterances (sketches)
+            utts_flat = all_sketches.reshape(all_sketches.shape[0], -1).numpy()
 
-        # Subsample up to 20 points per class
-        # import numpy as np
-        # max_per_class = 20
-        # keep_idx = np.concatenate([
-        #     np.where(colors == cls)[0][:max_per_class]
-        #     for cls in np.unique(colors)
-        # ])
-        # refs_flat      = refs_flat[keep_idx]
-        # utts_flat      = utts_flat[keep_idx]
-        # colors         = colors[keep_idx]
+            colors = all_labels.numpy()
 
-        # refs_emb_flat = all_vgg_features.reshape(all_vgg_features.shape[0], -1).numpy()[keep_idx]
-        refs_emb_flat = all_vgg_features.reshape(all_vgg_features.shape[0], -1).numpy()
+            # Subsample up to 20 points per class
+            # import numpy as np
+            # max_per_class = 20
+            # keep_idx = np.concatenate([
+            #     np.where(colors == cls)[0][:max_per_class]
+            #     for cls in np.unique(colors)
+            # ])
+            # refs_flat      = refs_flat[keep_idx]
+            # utts_flat      = utts_flat[keep_idx]
+            # colors         = colors[keep_idx]
 
-        utts_emb_flat = all_receiver_features.reshape(all_receiver_features.shape[0], -1).numpy()
+            # refs_emb_flat = all_vgg_features.reshape(all_vgg_features.shape[0], -1).numpy()[keep_idx]
+            refs_emb_flat = all_vgg_features.reshape(all_vgg_features.shape[0], -1).numpy()
 
-        # Run t-SNE on referents
-        print("Running t-SNE on referents...")
-        tsne_refs = TSNE(n_components=2, random_state=42, perplexity=min(30, refs_flat.shape[0] - 1))
-        refs_2d   = tsne_refs.fit_transform(refs_flat)
+            utts_emb_flat = all_receiver_features.reshape(all_receiver_features.shape[0], -1).numpy()
 
-        # Run t-SNE on utterances
-        print("Running t-SNE on utterances...")
-        tsne_utts = TSNE(n_components=2, random_state=42, perplexity=min(30, utts_flat.shape[0] - 1))
-        utts_2d   = tsne_utts.fit_transform(utts_flat)
+            # Run t-SNE on referents
+            print("Running t-SNE on referents...")
+            tsne_refs = TSNE(n_components=2, random_state=42, perplexity=min(30, refs_flat.shape[0] - 1))
+            refs_2d   = tsne_refs.fit_transform(refs_flat)
 
-        print("Running t-SNE on sender features...")
-        tsne_refs_emb = TSNE(n_components=2, random_state=42, perplexity=min(30, refs_emb_flat.shape[0] - 1))
-        refs_emb_2d = tsne_refs_emb.fit_transform(refs_emb_flat)
+            # Run t-SNE on utterances
+            print("Running t-SNE on utterances...")
+            tsne_utts = TSNE(n_components=2, random_state=42, perplexity=min(30, utts_flat.shape[0] - 1))
+            utts_2d   = tsne_utts.fit_transform(utts_flat)
 
-        print("Running t-SNE on utterence embeddings...")
-        tsne_utts_emb = TSNE(n_components=2, random_state=42, perplexity=min(30, utts_emb_flat.shape[0] - 1))
-        utts_emb_2d = tsne_utts_emb.fit_transform(utts_emb_flat)
+            print("Running t-SNE on sender features...")
+            tsne_refs_emb = TSNE(n_components=2, random_state=42, perplexity=min(30, refs_emb_flat.shape[0] - 1))
+            refs_emb_2d = tsne_refs_emb.fit_transform(refs_emb_flat)
 
-        cmap = plt.cm.get_cmap("tab10", len(class_names))
-        fig_tsne, axes_tsne = plt.subplots(2, 2, figsize=(14, 6))
+            print("Running t-SNE on utterence embeddings...")
+            tsne_utts_emb = TSNE(n_components=2, random_state=42, perplexity=min(30, utts_emb_flat.shape[0] - 1))
+            utts_emb_2d = tsne_utts_emb.fit_transform(utts_emb_flat)
 
-        for cls_idx, cls_name in enumerate(class_names):
-            mask = (colors == cls_idx)
-            axes_tsne[0][0].scatter(
-                refs_2d[mask, 0], refs_2d[mask, 1],
-                label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
-            )
-            axes_tsne[0][1].scatter(
-                utts_2d[mask, 0], utts_2d[mask, 1],
-                label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
-            )
-            axes_tsne[1][0].scatter(
-                refs_emb_2d[mask, 0], refs_emb_2d[mask, 1],
-                label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
-            )
-            axes_tsne[1][1].scatter(
-                utts_emb_2d[mask, 0], utts_emb_2d[mask, 1],
-                label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
-            )
+            cmap = plt.cm.get_cmap("tab10", len(class_names))
+            fig_tsne, axes_tsne = plt.subplots(2, 2, figsize=(14, 6))
+
+            for cls_idx, cls_name in enumerate(class_names):
+                mask = (colors == cls_idx)
+                axes_tsne[0][0].scatter(
+                    refs_2d[mask, 0], refs_2d[mask, 1],
+                    label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
+                )
+                axes_tsne[0][1].scatter(
+                    utts_2d[mask, 0], utts_2d[mask, 1],
+                    label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
+                )
+                axes_tsne[1][0].scatter(
+                    refs_emb_2d[mask, 0], refs_emb_2d[mask, 1],
+                    label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
+                )
+                axes_tsne[1][1].scatter(
+                    utts_emb_2d[mask, 0], utts_emb_2d[mask, 1],
+                    label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
+                )
 
 
-        axes_tsne[0][0].set_title("t-SNE: Referents (target images)")
-        axes_tsne[0][0].legend(markerscale=2, fontsize=8)
-        axes_tsne[0][0].axis("off")
+            axes_tsne[0][0].set_title("t-SNE: Referents (target images)")
+            axes_tsne[0][0].legend(markerscale=2, fontsize=8)
+            axes_tsne[0][0].axis("off")
 
-        axes_tsne[0][1].set_title("t-SNE: Utterances (sketches)")
-        axes_tsne[0][1].legend(markerscale=2, fontsize=8)
-        axes_tsne[0][1].axis("off")
+            axes_tsne[0][1].set_title("t-SNE: Utterances (sketches)")
+            axes_tsne[0][1].legend(markerscale=2, fontsize=8)
+            axes_tsne[0][1].axis("off")
 
-        axes_tsne[1][0].set_title("t-SNE: Referent Embeddings (Sender features features)")
-        axes_tsne[1][0].legend(markerscale=2, fontsize=8)
-        axes_tsne[1][0].axis("off")
+            axes_tsne[1][0].set_title("t-SNE: Referent Embeddings (Sender features features)")
+            axes_tsne[1][0].legend(markerscale=2, fontsize=8)
+            axes_tsne[1][0].axis("off")
 
-        axes_tsne[1][1].set_title("t-SNE: Utterances embeddings (Listener features)")
-        axes_tsne[1][1].legend(markerscale=2, fontsize=8)
-        axes_tsne[1][1].axis("off")
+            axes_tsne[1][1].set_title("t-SNE: Utterances embeddings (Listener features)")
+            axes_tsne[1][1].legend(markerscale=2, fontsize=8)
+            axes_tsne[1][1].axis("off")
 
-        plt.tight_layout()
-        wandb.log({"tsne": wandb.Image(fig_tsne)})
-        plt.close(fig_tsne)
+            plt.tight_layout()
+            wandb.log({"tsne": wandb.Image(fig_tsne)})
+            plt.close(fig_tsne)
 
-        # plt.show()
+            plt.show()
 
         core.close()

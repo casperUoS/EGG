@@ -7,7 +7,15 @@ import os
 import pathlib
 from typing import List, Optional
 
+import numpy
+import numpy as np
+from scipy import stats
 from timm.utils import accuracy
+from torch import nn, optim
+from numpy.linalg import norm
+from torchvision import models
+
+from gensim.models import Word2Vec, KeyedVectors
 
 try:
     # requires python >= 3.7
@@ -17,7 +25,7 @@ except ImportError:
     from contextlib import suppress as nullcontext
 
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 from .batch import Batch
 from .callbacks import (
@@ -35,6 +43,22 @@ try:
     from torch.cuda.amp import GradScaler, autocast
 except ImportError:
     pass
+
+class SketchDataset(Dataset):
+    def __init__(self, messages, labels):
+        """
+        :param messages: Tensor of shape (num_samples, height, width, channels)
+        """
+        self.messages = messages
+        self.labels = labels
+
+    def __len__(self):
+        return len(self.messages)
+
+    def __getitem__(self, idx):
+        message = self.messages[idx]
+        label = self.labels[idx]
+        return message, label
 
 
 class Trainer:
@@ -54,7 +78,8 @@ class Trainer:
         callbacks: Optional[List[Callback]] = None,
         grad_norm: float = None,
         aggregate_interaction_logs: bool = True,
-        run = None
+        run = None,
+        vgg_path = "",
     ):
         """
         :param game: A nn.Module that implements forward(); it is expected that forward returns a tuple of (loss, d),
@@ -84,6 +109,9 @@ class Trainer:
         self.aggregate_interaction_logs = aggregate_interaction_logs
 
         self.update_freq = common_opts.update_freq
+
+        self.vgg_path = vgg_path
+        self.full_interaction = None
 
         if common_opts.load_from_checkpoint is not None:
             print(
@@ -199,7 +227,132 @@ class Trainer:
         mean_loss /= n_batches
         full_interaction = Interaction.from_iterable(interactions)
 
+        self.full_interaction = full_interaction
+
         return mean_loss.item(), full_interaction
+
+    def semantic_correlaton(self, vgg, val_dataloader):
+
+        cate_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
+                       'dog', 'frog', 'horse', 'ship', 'truck']
+
+        word2vec = KeyedVectors.load_word2vec_format('data/GoogleNews-vectors-negative300.bin', binary=True)
+
+        cate2vec = {}
+        for name in cate_names:
+            cate2vec[name] = numpy.asarray(word2vec[name], dtype=np.float32)
+
+        feature_extractor = vgg.features
+
+        cate_features = {}
+
+        with torch.no_grad():
+            for batch_id, batch in enumerate(val_dataloader):
+                inputs, labels = batch
+                features = feature_extractor(inputs)
+
+                for i, label_idx in enumerate(labels):
+                    label_name = cate_names[label_idx.item()]
+                    if label_name not in cate_features:
+                        cate_features[label_name] = []
+                    cate_features[label_name].append(features[i].cpu())
+
+        cate2feature = {}
+        for name in cate_names:
+            cate_feature = cate_features[name]
+            cate_feature = numpy.array(cate_feature).squeeze()
+            cate_feature = cate_feature.mean(axis=0)
+            cate2feature[name] = cate_feature
+
+        x = []
+        y = []
+        for cate_i in cate_names:
+            for cate_j in cate_names:
+                vec1 = cate2vec[cate_i]
+                vec2 = cate2vec[cate_j]
+                sim = vec1.dot(vec2) / (norm(vec1) * norm(vec2))
+                x.append(sim)
+
+                vec1 = cate2feature[cate_i]
+                vec2 = cate2feature[cate_j]
+                sim = vec1.dot(vec2) / (norm(vec1) * norm(vec2))
+                y.append(sim)
+
+        a = stats.pearsonr(np.array(x), np.array(y))
+        return a[0]
+
+    def symbolicity_eval(self, epochs = 10):
+
+        messages = self.full_interaction.message
+        messages = torch.squeeze(messages)
+        messages = messages.unsqueeze(1)
+        messages = messages.repeat(1, 3, 1, 1)
+        ids = self.full_interaction.labels
+
+        train_messages, val_messages = np.split(messages, [int(len(messages) * 0.9)])
+        train_labels, val_labels = np.split(ids, [int(len(ids) * 0.9)])
+
+        train_sketches = SketchDataset(train_messages,train_labels)
+        test_sketches = SketchDataset(val_messages,val_labels)
+
+        train_dataloader = DataLoader(train_sketches, batch_size=16, shuffle=True, num_workers=2)
+        val_dataloader = DataLoader(test_sketches, batch_size=16, shuffle=False, num_workers=2)
+
+
+        vgg = models.vgg16(pretrained=True)
+
+        vgg.classifier[-1] = nn.Linear(vgg.classifier[-1].in_features, 10)
+
+        for param in vgg.features.parameters():
+            param.requires_grad = False
+
+        for param in vgg.classifier[:-1].parameters():
+            param.requires_grad = False
+
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.SGD(vgg.parameters(), lr=0.0002, momentum=0.9)
+
+
+        for epoch in range(epochs):
+            print("epoch:", epoch)
+            running_loss = 0.0
+            for batch_id, batch in enumerate(train_dataloader):
+                inputs, labels = batch
+
+                optimizer.zero_grad()
+
+                outputs = vgg(inputs)
+                loss = criterion(outputs, labels)
+                loss.backward()
+                optimizer.step()
+
+                # print statistics
+                running_loss += loss.item()
+                # if batch_id % 2000 == 1999:  # print every 2000 mini-batches
+                #     print(f'[{epoch + 1}, {batch_id + 1:5d}] loss: {running_loss / 2000:.3f}')
+                #     running_loss = 0.0
+            print(f'[{epoch + 1}] loss: {running_loss / len(train_dataloader):.3f}')
+
+        print("evaluating symbolicity ...")
+
+        running_loss = 0.0
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for batch_id, batch in enumerate(val_dataloader):
+                inputs, labels = batch
+                outputs = vgg(inputs)
+                loss = criterion(outputs, labels)
+                running_loss += loss.item()
+                total += labels.size(0)
+                correct += (outputs.argmax(dim=1) == labels).sum().item()
+
+        eval_loss = running_loss / len(val_dataloader)
+        eval_accuracy = (100 * correct / total)
+
+        sem_col = self.semantic_correlaton(vgg, val_dataloader)
+
+        return eval_loss , eval_accuracy, sem_col
 
     def train_epoch(self):
         mean_loss = 0
@@ -275,9 +428,12 @@ class Trainer:
 
             train_loss, train_interaction = self.train_epoch()
             self.run.log({"train_loss": train_loss})
-            self.run.log({"train_accuracy": train_interaction.aux["acc"].mean()})
-            self.run.log({"train_baseline": train_interaction.aux["baseline"].mean()})
-            self.run.log({"train_receiver_entropy": train_interaction.aux["receiver_entropy"].mean()})
+            if "acc" in train_interaction.aux:
+                self.run.log({"train_accuracy": train_interaction.aux["acc"].mean()})
+            if "baseline" in train_interaction.aux:
+                self.run.log({"train_baseline": train_interaction.aux["baseline"].mean()})
+            if "receiver_entropy" in train_interaction.aux:
+                self.run.log({"train_receiver_entropy": train_interaction.aux["receiver_entropy"].mean()})
             self.run.log({"epoch": epoch})
 
             for callback in self.callbacks:
@@ -293,9 +449,12 @@ class Trainer:
                     callback.on_validation_begin(epoch + 1)
                 validation_loss, validation_interaction = self.eval()
                 self.run.log({"test_loss": validation_loss})
-                self.run.log({"test_accuracy": validation_interaction.aux["acc"].mean()})
-                self.run.log({"test_baseline": validation_interaction.aux["baseline"].mean()})
-                self.run.log({"test_receiver_entropy": validation_interaction.aux["receiver_entropy"].mean()})
+                if "acc" in validation_interaction.aux:
+                    self.run.log({"test_accuracy": validation_interaction.aux["acc"].mean()})
+                if "baseline" in validation_interaction.aux:
+                    self.run.log({"test_baseline": validation_interaction.aux["baseline"].mean()})
+                if "receiver_entropy" in validation_interaction.aux:
+                    self.run.log({"test_receiver_entropy": validation_interaction.aux["receiver_entropy"].mean()})
 
                 for callback in self.callbacks:
                     callback.on_validation_end(

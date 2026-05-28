@@ -88,6 +88,52 @@ class DrawSender(nn.Module):
         x = self.lin2(x)
         return x, embeds
 
+class DrawSenderDiff(nn.Module):
+    # This was mainly taken from dani's learning to draw model
+    def __init__(self, feat_size, vgg_path, hidden_size, out_features=20, num_splines=3, signal_game=True,
+                 critic_mode=False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.feat_size = feat_size
+        self.hidden_size = hidden_size
+        self.signal_game = signal_game
+
+        # cifar10_weights = torch.load("/home/casper/Documents/Data/cifar10vgg_data/cifar10vgg.h5")
+
+        self.vgg = torch.load(vgg_path, weights_only=False)
+
+        for param in self.vgg.parameters():
+            param.requires_grad = False
+        self.vgg.eval()
+
+        self.lin1 = nn.Sequential(nn.Linear(feat_size, 256, bias=True), nn.LeakyReLU() )
+        # self.bn1 = nn.BatchNorm1d(hidden_size)
+        # self.lin2 = nn.Linear(hidden_size, out_features, bias=True)
+
+        # self.lin1 = nn.Linear(feat_size, hidden_size)
+
+        self.logvar_predictor = nn.Linear(256 * 1 * 1, out_features)
+        self.mu_predictor = nn.Linear(256 * 1 * 1, out_features)
+
+    def train(self, mode=True):
+        super().train(mode)
+        self.vgg.eval()  # always keep vision_model in eval mode
+        return self
+
+
+    def forward(self, x, state=None):
+        if self.signal_game:
+            x = x[0]
+
+        x = self.vgg(x)
+        x = x.view(x.size(0), -1)
+        x = self.lin1(x)
+        # embeds = x
+        # x = self.bn1(x)
+        # x = self.lin2(x)
+        logvar = self.logvar_predictor(x)
+        mu = self.mu_predictor(x)
+        return mu, logvar
+
 class DrawReceiver(nn.Module):
     def __init__(self,
                  game_size,

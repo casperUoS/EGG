@@ -175,12 +175,12 @@ class SymbolGameGS(nn.Module):
             else test_logging_strategy
         )
 
-    def forward(self, sender_input, labels, receiver_input=None, aux_input=None):
-        message = self.sender(sender_input, aux_input)
-        receiver_output = self.receiver(message, receiver_input, aux_input)
+    def forward(self, sender_input, labels, receiver_input=None, target_position=None, aux_input=None):
+        message, auxy = self.sender(sender_input, aux_input)
+        receiver_output, _ = self.receiver(message, receiver_input, aux_input)
 
         loss, aux_info = self.loss(
-            sender_input, message, receiver_input, receiver_output, labels, aux_input
+            sender_input, message, receiver_input, receiver_output, target_position, aux_input
         )
 
         logging_strategy = (
@@ -188,6 +188,10 @@ class SymbolGameGS(nn.Module):
         )
         interaction = logging_strategy.filtered_interaction(
             sender_input=sender_input,
+            sender_output=message,
+            edge_penalty=aux_info["edge_penalty"],
+            vgg_features=None,
+            receiver_features=None,
             receiver_input=receiver_input,
             labels=labels,
             aux_input=aux_input,

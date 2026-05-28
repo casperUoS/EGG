@@ -240,6 +240,10 @@ class SymbolGameDrawReinforce(SymbolGameReinforce):
         if len(sender_out) == 3:
             message, sender_log_prob, sender_entropy = sender_out
             sender_output = None
+        elif len(sender_out) == 2:
+            message, sender_aux = sender_out
+            sender_log_prob = sender_aux['sender_log_prob']
+            sender_entropy = sender_aux['sender_entropy']
         else:
             message, sender_log_prob, sender_entropy, sender_output, vgg_features = sender_out
         message = self.rotater(message)
