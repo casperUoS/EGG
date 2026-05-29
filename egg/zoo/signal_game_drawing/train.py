@@ -58,6 +58,7 @@ def parse_arguments():
     parser.add_argument("--sample_mode", default="all", help="'all': display all classes. 'single' display one class, 'double' display two classes")
     parser.add_argument("--all_classes", type=bool, default=False, help="Turns signal game into classification game")
     parser.add_argument("--diff_class", type=bool, default=False, help="wether to get different instance of class for receiver")
+    parser.add_argument("--n_strokes",type=int,default=3,help="number of strokes")
 
     opt = core.init(parser)
     assert opt.game_size >= 1
@@ -128,7 +129,7 @@ def get_game(config):
             feat_size=feat_size,
             vgg_path=opts.vgg_root,
             hidden_size=config["sender_emb_size"],
-            out_features=6*config['num_splines'],
+            out_features=6*config['n_strokes'],
             signal_game=False if config['all_classes'] else True,
         )
     if config["all_classes"]:
@@ -160,7 +161,7 @@ def get_game(config):
         feat_size=feat_size,
         vgg_path=opts.vgg_root,
         hidden_size=512,
-        out_features=6*config['num_splines'],
+        out_features=6*config['n_strokes'],
         signal_game=False if config['all_classes'] else True,
         critic_mode=True
         )
@@ -179,7 +180,7 @@ def get_game(config):
         sender = core.GumbelSoftmaxWrapper(sender, temperature=opts.gs_tau)
         game = core.SymbolGameGS(sender, receiver, loss_nll)
     elif config['mode'] == "ds":
-        sender = DiffRasterWrapper(sender, config['canvas_size'])
+        sender = DiffRasterWrapper(sender, config['canvas_size'], paths=config['n_strokes'])
         game = core.SymbolGameGS(sender, receiver, loss_hinge)
     else:
         raise RuntimeError(f"Unknown training mode: {opts.mode}")
@@ -212,11 +213,11 @@ if __name__ == "__main__":
         receiver_entropy_coeff=0.1,
         all_classes=opts.all_classes,
         canvas_size=32,
-        num_splines=3,
         same_vgg_model=False,
         mode=opts.mode,
         diff_class=opts.diff_class,
-        sender_emb_size=128 #originally 512, maybe go back to this
+        sender_emb_size=128, #originally 512, maybe go back to this
+        n_strokes = opts.n_strokes,
     )
 
     # data_folder = os.path.join(opts.root, "train/")

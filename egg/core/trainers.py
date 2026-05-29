@@ -298,8 +298,8 @@ class Trainer:
         train_dataloader = DataLoader(train_sketches, batch_size=16, shuffle=True, num_workers=2)
         val_dataloader = DataLoader(test_sketches, batch_size=16, shuffle=False, num_workers=2)
 
-
-        vgg = models.vgg16(pretrained=True)
+        vgg = models.vgg16(pretrained=False)
+        vgg.load_state_dict(torch.load("data/vgg16_pretrained.pth"))
 
         vgg.classifier[-1] = nn.Linear(vgg.classifier[-1].in_features, 10)
 
