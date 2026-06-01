@@ -56,8 +56,8 @@ def parse_arguments():
     )
     parser.add_argument("--gs_tau", type=float, default=1.0, help="GS temperature")
     parser.add_argument("--sample_mode", default="all", help="'all': display all classes. 'single' display one class, 'double' display two classes")
-    parser.add_argument("--all_classes", type=bool, default=False, help="Turns signal game into classification game")
-    parser.add_argument("--diff_class", type=bool, default=False, help="wether to get different instance of class for receiver")
+    parser.add_argument("--all_classes", action=argparse.BooleanOptionalAction, help="Turns signal game into classification game")
+    parser.add_argument("--diff_class", action=argparse.BooleanOptionalAction, help="wether to get different instance of class for receiver")
     parser.add_argument("--n_strokes",type=int,default=3,help="number of strokes")
 
     opt = core.init(parser)
@@ -215,7 +215,7 @@ if __name__ == "__main__":
         canvas_size=32,
         same_vgg_model=False,
         mode=opts.mode,
-        diff_class=opts.diff_class,
+        diff_class=opts.diff_class if not None else False,
         sender_emb_size=128, #originally 512, maybe go back to this
         n_strokes = opts.n_strokes,
     )
