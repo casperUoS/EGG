@@ -6,6 +6,7 @@
 import argparse
 import os
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torchvision.datasets
@@ -279,15 +280,15 @@ if __name__ == "__main__":
         print("Generating sample sketch...")
         val_loss, interaction = trainer.eval()
 
-        symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
-
-        print("Symbolicity score:", symbolicity_loss)
-        print("Symbolicity accuracy:", symbolicity_acc)
-        print("Semanticity score:", semantic_cor)
-
-        wandb.log({"symbolicity_loss": symbolicity_loss})
-        wandb.log({"symbolicity_acc": symbolicity_acc})
-        wandb.log({"semantic_cor": semantic_cor})
+        # symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
+        #
+        # print("Symbolicity score:", symbolicity_loss)
+        # print("Symbolicity accuracy:", symbolicity_acc)
+        # print("Semanticity score:", semantic_cor)
+        #
+        # wandb.log({"symbolicity_loss": symbolicity_loss})
+        # wandb.log({"symbolicity_acc": symbolicity_acc})
+        # wandb.log({"semantic_cor": semantic_cor})
 
         for sample_mode in ["all","single","double"]:
 
@@ -429,102 +430,134 @@ if __name__ == "__main__":
             long_img = ToPILImage()(long_img.permute(2, 0, 1))
             wandb.log({f"long_img_{sample_mode}": wandb.Image(long_img)})
 
-        if config["mode"] != "ds":
-            # ── t-SNE scatter plots ──────────────────────────────────────────────────
-            from sklearn.manifold import TSNE
 
-            # Re-collect full-batch tensors (outside the sample_mode loop)
-            all_sketches     = interaction.message.detach().cpu()       # (N, C, H, W) or (N, H, W)
-            all_sender_input = interaction.sender_input.detach().cpu()  # (N, C, H, W) or (game_size, N, C, H, W)
-            all_labels       = interaction.labels.detach().cpu()        # (N,)
-            all_vgg_features = interaction.vgg_features.detach().cpu()
-            all_receiver_features = interaction.receiver_features.detach().cpu()
+        # ── t-SNE scatter plots ──────────────────────────────────────────────────
+        from sklearn.manifold import TSNE
 
-            # Flatten referents: take the target image (index 0 along game_size dim if needed)
-            refs_flat = all_sender_input[0].reshape(all_sender_input.shape[1], -1).numpy()
-
-            # Flatten utterances (sketches)
-            utts_flat = all_sketches.reshape(all_sketches.shape[0], -1).numpy()
-
-            colors = all_labels.numpy()
-
-            # Subsample up to 20 points per class
-            # import numpy as np
-            # max_per_class = 20
-            # keep_idx = np.concatenate([
-            #     np.where(colors == cls)[0][:max_per_class]
-            #     for cls in np.unique(colors)
-            # ])
-            # refs_flat      = refs_flat[keep_idx]
-            # utts_flat      = utts_flat[keep_idx]
-            # colors         = colors[keep_idx]
-
-            # refs_emb_flat = all_vgg_features.reshape(all_vgg_features.shape[0], -1).numpy()[keep_idx]
-            refs_emb_flat = all_vgg_features.reshape(all_vgg_features.shape[0], -1).numpy()
-
-            utts_emb_flat = all_receiver_features.reshape(all_receiver_features.shape[0], -1).numpy()
-
-            # Run t-SNE on referents
-            print("Running t-SNE on referents...")
-            tsne_refs = TSNE(n_components=2, random_state=42, perplexity=min(30, refs_flat.shape[0] - 1))
-            refs_2d   = tsne_refs.fit_transform(refs_flat)
-
-            # Run t-SNE on utterances
-            print("Running t-SNE on utterances...")
-            tsne_utts = TSNE(n_components=2, random_state=42, perplexity=min(30, utts_flat.shape[0] - 1))
-            utts_2d   = tsne_utts.fit_transform(utts_flat)
-
-            print("Running t-SNE on sender features...")
-            tsne_refs_emb = TSNE(n_components=2, random_state=42, perplexity=min(30, refs_emb_flat.shape[0] - 1))
-            refs_emb_2d = tsne_refs_emb.fit_transform(refs_emb_flat)
-
-            print("Running t-SNE on utterence embeddings...")
-            tsne_utts_emb = TSNE(n_components=2, random_state=42, perplexity=min(30, utts_emb_flat.shape[0] - 1))
-            utts_emb_2d = tsne_utts_emb.fit_transform(utts_emb_flat)
-
-            cmap = plt.cm.get_cmap("tab10", len(class_names))
-            fig_tsne, axes_tsne = plt.subplots(2, 2, figsize=(14, 6))
-
-            for cls_idx, cls_name in enumerate(class_names):
-                mask = (colors == cls_idx)
-                axes_tsne[0][0].scatter(
-                    refs_2d[mask, 0], refs_2d[mask, 1],
-                    label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
-                )
-                axes_tsne[0][1].scatter(
-                    utts_2d[mask, 0], utts_2d[mask, 1],
-                    label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
-                )
-                axes_tsne[1][0].scatter(
-                    refs_emb_2d[mask, 0], refs_emb_2d[mask, 1],
-                    label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
-                )
-                axes_tsne[1][1].scatter(
-                    utts_emb_2d[mask, 0], utts_emb_2d[mask, 1],
-                    label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
-                )
+        # Re-collect full-batch tensors (outside the sample_mode loop)
+        all_sketches     = interaction.message.detach().cpu()       # (N, C, H, W) or (N, H, W)
+        all_sender_input = interaction.sender_input.detach().cpu()  # (N, C, H, W) or (game_size, N, C, H, W)
+        all_labels       = interaction.labels.detach().cpu()        # (N,)
+        all_vgg_features = interaction.vgg_features.detach().cpu()
+        all_receiver_features = interaction.receiver_features.detach().cpu()
 
 
-            axes_tsne[0][0].set_title("t-SNE: Referents (target images)")
-            axes_tsne[0][0].legend(markerscale=2, fontsize=8)
-            axes_tsne[0][0].axis("off")
+        # Flatten referents: take the target image (index 0 along game_size dim if needed)
+        refs_flat = all_sender_input[0].reshape(all_sender_input.shape[1], -1).numpy()
 
-            axes_tsne[0][1].set_title("t-SNE: Utterances (sketches)")
-            axes_tsne[0][1].legend(markerscale=2, fontsize=8)
-            axes_tsne[0][1].axis("off")
+        # Flatten utterances (sketches)
+        utts_flat = all_sketches.reshape(all_sketches.shape[0], -1).numpy()
 
-            axes_tsne[1][0].set_title("t-SNE: Referent Embeddings (Sender features features)")
-            axes_tsne[1][0].legend(markerscale=2, fontsize=8)
-            axes_tsne[1][0].axis("off")
+        # refs_emb_flat = all_vgg_features.reshape(all_vgg_features.shape[0], -1).numpy()[keep_idx]
+        refs_emb_flat = all_vgg_features.reshape(all_vgg_features.shape[0], -1).numpy()
 
-            axes_tsne[1][1].set_title("t-SNE: Utterances embeddings (Listener features)")
-            axes_tsne[1][1].legend(markerscale=2, fontsize=8)
-            axes_tsne[1][1].axis("off")
+        utts_emb_flat = all_receiver_features.reshape(all_receiver_features.shape[0], -1).numpy()
 
-            plt.tight_layout()
-            wandb.log({"tsne": wandb.Image(fig_tsne)})
-            plt.close(fig_tsne)
+        colors = all_labels.numpy()
 
-            plt.show()
+        max_per_class = 100
+        rng = np.random.RandomState(42)  # deterministic subsampling
+
+        # `refs_flat`, `utts_flat`, `colors` already exist (numpy arrays)
+        # stratified subsample: keep up to `max_per_class` items per class
+        keep_idx = np.concatenate([
+            rng.choice(np.where(colors == cls)[0],
+                       size=min(max_per_class, int((colors == cls).sum())),
+                       replace=False)
+            for cls in np.unique(colors)
+        ])
+
+        # apply subsample
+        refs_flat_sub = refs_flat[keep_idx]
+        utts_flat_sub = utts_flat[keep_idx]
+        refs_emb_flat_sub = refs_emb_flat[keep_idx]
+        utts_emb_flat_sub = utts_emb_flat[keep_idx]
+        colors_sub = colors[keep_idx]
+
+        # if you also have embeddings:
+        # refs_emb_flat_sub = refs_emb_flat[keep_idx]
+        # utts_emb_flat_sub = utts_emb_flat[keep_idx]
+
+        # adjust perplexity to be valid for number of points
+        perplexity_refs = min(30, max(1, refs_flat_sub.shape[0] - 1))
+        perplexity_utts = min(30, max(1, utts_flat_sub.shape[0] - 1))
+        perplexity_refs_emb = min(30, max(1, refs_emb_flat_sub.shape[0] - 1))
+        perplexity_utts_emb = min(30, max(1, utts_emb_flat_sub.shape[0] - 1))
+
+        # Subsample up to 20 points per class
+        # import numpy as np
+        # max_per_class = 20
+        # keep_idx = np.concatenate([
+        #     np.where(colors == cls)[0][:max_per_class]
+        #     for cls in np.unique(colors)
+        # ])
+        # refs_flat      = refs_flat[keep_idx]
+        # utts_flat      = utts_flat[keep_idx]
+        # colors         = colors[keep_idx]
+
+
+
+        # Run t-SNE on referents
+        print("Running t-SNE on referents...")
+        tsne_refs = TSNE(n_components=2, random_state=42, perplexity=perplexity_refs)
+        refs_2d_sub = tsne_refs.fit_transform(refs_flat_sub)
+
+        # Run t-SNE on utterances
+        print("Running t-SNE on utterances...")
+        tsne_utts = TSNE(n_components=2, random_state=42, perplexity=perplexity_utts)
+        utts_2d_sub = tsne_utts.fit_transform(utts_flat_sub)
+
+        print("Running t-SNE on sender features...")
+        tsne_refs_emb = TSNE(n_components=2, random_state=42, perplexity=perplexity_refs_emb)
+        refs_emb_2d_sub = tsne_refs_emb.fit_transform(refs_emb_flat_sub)
+
+        print("Running t-SNE on utterence embeddings...")
+        tsne_utts_emb = TSNE(n_components=2, random_state=42, perplexity=perplexity_utts_emb)
+        utts_emb_2d_sub = tsne_utts_emb.fit_transform(utts_emb_flat_sub)
+
+        cmap = plt.cm.get_cmap("tab10", len(class_names))
+        fig_tsne, axes_tsne = plt.subplots(2, 2, figsize=(14, 6), squeeze=False)
+
+        for cls_idx, cls_name in enumerate(class_names):
+            mask = (colors_sub == cls_idx)
+            axes_tsne[0][0].scatter(
+                refs_2d_sub[mask, 0], refs_2d_sub[mask, 1],
+                label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
+            )
+            axes_tsne[0][1].scatter(
+                utts_2d_sub[mask, 0], utts_2d_sub[mask, 1],
+                label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
+            )
+            axes_tsne[1][0].scatter(
+                refs_emb_2d_sub[mask, 0], refs_emb_2d_sub[mask, 1],
+                label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
+            )
+            axes_tsne[1][1].scatter(
+                utts_emb_2d_sub[mask, 0], utts_emb_2d_sub[mask, 1],
+                label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
+            )
+
+
+        axes_tsne[0][0].set_title("t-SNE: Referents (target images)")
+        axes_tsne[0][0].legend(markerscale=2, fontsize=8)
+        axes_tsne[0][0].axis("off")
+
+        axes_tsne[0][1].set_title("t-SNE: Utterances (sketches)")
+        axes_tsne[0][1].legend(markerscale=2, fontsize=8)
+        axes_tsne[0][1].axis("off")
+
+        axes_tsne[1][0].set_title("t-SNE: Referent Embeddings (Sender features features)")
+        axes_tsne[1][0].legend(markerscale=2, fontsize=8)
+        axes_tsne[1][0].axis("off")
+
+        axes_tsne[1][1].set_title("t-SNE: Utterances embeddings (Listener features)")
+        axes_tsne[1][1].legend(markerscale=2, fontsize=8)
+        axes_tsne[1][1].axis("off")
+
+        plt.tight_layout()
+        wandb.log({"tsne": wandb.Image(fig_tsne)})
+        plt.close(fig_tsne)
+
+        plt.show()
 
         core.close()

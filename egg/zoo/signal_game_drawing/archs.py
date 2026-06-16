@@ -124,15 +124,15 @@ class DrawSenderDiff(nn.Module):
         if self.signal_game:
             x = x[0]
 
-        x = self.vgg(x)
-        x = x.view(x.size(0), -1)
+        embeds = self.vgg(x)
+        x = embeds.view(embeds.size(0), -1)
         x = self.lin1(x)
         # embeds = x
         # x = self.bn1(x)
         # x = self.lin2(x)
         logvar = self.logvar_predictor(x)
         mu = self.mu_predictor(x)
-        return mu, logvar
+        return mu, logvar, embeds
 
 class DrawReceiver(nn.Module):
     def __init__(self,

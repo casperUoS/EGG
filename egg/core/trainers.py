@@ -9,6 +9,7 @@ from typing import List, Optional
 
 import numpy
 import numpy as np
+import scipy
 from scipy import stats
 from timm.utils import accuracy
 from torch import nn, optim
@@ -353,6 +354,49 @@ class Trainer:
         sem_col = self.semantic_correlaton(vgg, val_dataloader)
 
         return eval_loss , eval_accuracy, sem_col
+
+    # def mean_pairwise_shape_sim(self,utterances_coords):
+    #     N, losses = utterances_coords.shape[0], []
+    #     for i in range(N):
+    #         for j in range(i, N):
+    #             if i != j:
+    #                 loss = scipy.spatial.distance.directed_hausdorff(utterances_coords[i].reshape(-1, 2).detach(),
+    #                                                                  utterances_coords[j].reshape(-1, 2).detach())[0]
+    #                 losses.append(loss)
+    #     return np.mean(losses)
+    #
+    # def get_coherences(self,results):
+    #     referents = results[0]["refs"]
+    #     unique_referents = np.unique(results[0]["refs"]).tolist()
+    #
+    #     nb_perspectives = int(len(referents) / len(unique_referents))
+    #
+    #     a_coherences, p_coherences, r_coherences = [], [], []
+    #     for ref in unique_referents:
+    #         ref_mask = (np.array(referents) == ref)
+    #
+    #         ### P-COHERENCE
+    #         for i in results.keys():
+    #             coord_set = results[i]["utts_coords"][ref_mask]
+    #             p_coherences.append(self.mean_pairwise_shape_sim(coord_set))
+    #
+    #         ### A-COHERENCE
+    #         for j in range(ref_mask.sum()):
+    #             coord_set = torch.empty(0, 1 * (20 + 2))
+    #             for i in results.keys():
+    #                 coord_set = torch.cat((coord_set, results[i]["utts_coords"][ref_mask][j].unsqueeze(0)))
+    #             a_coherences.append(self.mean_pairwise_shape_sim(coord_set))
+    #
+    #     ### R-COHERENCE
+    #     for p in range(nb_perspectives):
+    #         for i in results.keys():
+    #             coord_set = torch.empty(0, 1 * (20 + 2))
+    #             for ref in unique_referents:
+    #                 ref_mask = (np.array(referents) == ref)
+    #                 coord_set = torch.cat((coord_set, results[i]["utts_coords"][ref_mask][p].unsqueeze(0)))
+    #             r_coherences.append(self.mean_pairwise_shape_sim(coord_set))
+    #
+    #     return a_coherences, p_coherences, r_coherences
 
     def train_epoch(self):
         mean_loss = 0

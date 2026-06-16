@@ -131,13 +131,14 @@ class DiffRasterWrapper(nn.Module):
 
     def forward(self, *args, **kwargs):
 
-        mu, logvar = self.agent(*args, **kwargs)
+        mu, logvar, vgg_feats = self.agent(*args, **kwargs)
         z,std = self.reparameterize(mu, logvar)
 
         output, aux = self.decode(z)
 
         aux["sender_log_prob"] = logvar
         aux["sender_entropy"] = std.mean()
+        aux["vgg_features"] = vgg_feats
         return output, aux
 
 
