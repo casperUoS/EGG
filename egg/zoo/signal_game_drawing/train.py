@@ -280,15 +280,15 @@ if __name__ == "__main__":
         print("Generating sample sketch...")
         val_loss, interaction = trainer.eval()
 
-        # symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
-        #
-        # print("Symbolicity score:", symbolicity_loss)
-        # print("Symbolicity accuracy:", symbolicity_acc)
-        # print("Semanticity score:", semantic_cor)
-        #
-        # wandb.log({"symbolicity_loss": symbolicity_loss})
-        # wandb.log({"symbolicity_acc": symbolicity_acc})
-        # wandb.log({"semantic_cor": semantic_cor})
+        symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
+
+        print("Symbolicity score:", symbolicity_loss)
+        print("Symbolicity accuracy:", symbolicity_acc)
+        print("Semanticity score:", semantic_cor)
+
+        wandb.log({"symbolicity_loss": symbolicity_loss})
+        wandb.log({"symbolicity_acc": symbolicity_acc})
+        wandb.log({"semantic_cor": semantic_cor})
 
         for sample_mode in ["all","single","double"]:
 
