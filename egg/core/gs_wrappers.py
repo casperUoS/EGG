@@ -203,6 +203,10 @@ class SymbolGameGS(nn.Module):
 
         return loss.mean(), interaction
 
+    def get_sender(self):
+        return self.sender
+
+
 
 class RelaxedEmbedding(nn.Embedding):
     """

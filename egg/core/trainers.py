@@ -519,6 +519,9 @@ class Trainer:
         for callback in self.callbacks:
             callback.on_train_end()
 
+    def get_sender(self):
+        return self.game.get_sender()
+
     def load(self, checkpoint: Checkpoint):
         self.game.load_state_dict(checkpoint.model_state_dict)
         self.optimizer.load_state_dict(checkpoint.optimizer_state_dict)
@@ -529,7 +532,7 @@ class Trainer:
         self.start_epoch = checkpoint.epoch
 
     def load_from_checkpoint(self, path):
-        """7
+        """
         Loads the game, agents, and optimizer state from a file
         :param path: Path to the file
         """

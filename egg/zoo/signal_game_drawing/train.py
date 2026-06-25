@@ -23,6 +23,7 @@ from egg.zoo.signal_game_drawing.archs import DrawSender, DrawReceiver, DrawRece
 from egg.zoo.signal_game_drawing.wrappers import BezierReinforceWrapper, DiffRasterWrapper
 import wandb
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -188,6 +189,36 @@ def get_game(config):
 
     return game
 
+def plot_latent_space(model, scale=1.0, n=25, digit_size=32, figsize=15):
+    # display a n*n 2D manifold of digits
+    figure = np.zeros((digit_size * n, digit_size * n))
+
+    # construct a grid
+    grid_x = np.linspace(-scale, scale, n)
+    grid_y = np.linspace(-scale, scale, n)[::-1]
+
+    for i, yi in enumerate(grid_y):
+        for j, xi in enumerate(grid_x):
+            z_sample = torch.tensor([[xi, yi]], dtype=torch.float).to(device)
+            x_decoded = model.decode(z_sample)
+            digit = x_decoded[0].detach().cpu().reshape(digit_size, digit_size)
+            figure[i * digit_size : (i + 1) * digit_size, j * digit_size : (j + 1) * digit_size,] = digit
+
+    plt.figure(figsize=(figsize, figsize))
+    plt.title('VAE Latent Space Visualization')
+    start_range = digit_size // 2
+    end_range = n * digit_size + start_range
+    pixel_range = np.arange(start_range, end_range, digit_size)
+    sample_range_x = np.round(grid_x, 1)
+    sample_range_y = np.round(grid_y, 1)
+    plt.xticks(pixel_range, sample_range_x)
+    plt.yticks(pixel_range, sample_range_y)
+    plt.xlabel("mean, z [0]")
+    plt.ylabel("var, z [1]")
+    plt.imshow(figure, cmap="Greys_r")
+
+    return figure
+
 
 if __name__ == "__main__":
 
@@ -280,15 +311,15 @@ if __name__ == "__main__":
         print("Generating sample sketch...")
         val_loss, interaction = trainer.eval()
 
-        symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
-
-        print("Symbolicity score:", symbolicity_loss)
-        print("Symbolicity accuracy:", symbolicity_acc)
-        print("Semanticity score:", semantic_cor)
-
-        wandb.log({"symbolicity_loss": symbolicity_loss})
-        wandb.log({"symbolicity_acc": symbolicity_acc})
-        wandb.log({"semantic_cor": semantic_cor})
+        # symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
+        #
+        # print("Symbolicity score:", symbolicity_loss)
+        # print("Symbolicity accuracy:", symbolicity_acc)
+        # print("Semanticity score:", semantic_cor)
+        #
+        # wandb.log({"symbolicity_loss": symbolicity_loss})
+        # wandb.log({"symbolicity_acc": symbolicity_acc})
+        # wandb.log({"semantic_cor": semantic_cor})
 
         for sample_mode in ["all","single","double"]:
 
