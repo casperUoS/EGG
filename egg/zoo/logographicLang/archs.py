@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 import pydiffvg
 
@@ -46,11 +47,10 @@ class VisionEncoder(nn.Module):
 
         return mu, logvar, auxdata
 
-class DiffDencoder(nn.Module):
+class DiffDecoder(nn.Module):
 
-    def __init__(self, agent, canvas_size=28, zdim=128, hdim=1024, paths=3, segments=1):
-        super(DiffDencoder, self).__init__()
-        self.agent = agent
+    def __init__(self, canvas_size=28, zdim=128, hdim=1024, paths=3, segments=1):
+        super(DiffDecoder, self).__init__()
         self.imsize = canvas_size
 
         self.paths = paths
@@ -69,16 +69,6 @@ class DiffDencoder(nn.Module):
             nn.Linear(hdim, 2 * self.paths * (self.segments * 3 + 1)),
             nn.Tanh()  # bound spatial extent
         )
-
-        # self.width_predictor = nn.Sequential(
-        #     nn.Linear(hdim, self.paths),
-        #     nn.Sigmoid()
-        # )
-
-        # self.alpha_predictor = nn.Sequential(
-        #     nn.Linear(hdim, self.paths),
-        #     nn.Sigmoid()
-        # )
 
     def render(self, canvas_width, canvas_height, shapes, shape_groups, samples=2):
         _render = pydiffvg.RenderFunction.apply
@@ -102,13 +92,6 @@ class DiffDencoder(nn.Module):
         all_points = all_points.view(bs, self.paths, -1, 2)
 
         all_points = all_points * (self.imsize // 2 - 2) + self.imsize // 2
-
-        # all_widths = self.width_predictor(z)
-        # min_width = self.stroke_width[0]
-        # max_width = self.stroke_width[1]
-        # all_widths = (max_width - min_width) * all_widths + min_width
-
-        # all_alphas = self.alpha_predictor(z)
 
         # Process the batch sequentially
         outputs = []
@@ -166,3 +149,43 @@ class DiffDencoder(nn.Module):
     def forward(self, z):
         output, aux = self.decode(z)
         return output, aux
+
+class SketchEncoder(nn.Module):
+    def __init__(self, dropout_rate=0.4, action_dim=2, classes=10, freeze_vgg=True):
+        super(SketchEncoder, self).__init__()
+
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), stride=(1, 1), bias=True)
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(3, 3), stride=(1, 1), bias=True)
+        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3), stride=(1, 1), bias=True)
+
+        self.dense1 = nn.Linear(in_features=30976, out_features=1024, bias=True)
+        self.dense2 = nn.Linear(in_features=1024, out_features=256, bias=True)
+        self.denseFinal = nn.Linear(in_features=256, out_features=classes, bias=True)
+
+        self.dropout = nn.Dropout(p=dropout_rate)
+
+    def forward(self, x):
+        if len(x.size()) == 3:
+            signal = x.unsqueeze(1)
+        h_s = self.conv1(x)
+        h_s = F.relu(h_s)
+        h_s = self.conv2(h_s)
+        h_s = F.relu(h_s)
+        h_s = self.conv3(h_s)
+        h_s = F.relu(h_s)
+        h_s = h_s.reshape((h_s.shape[0], -1))  # Flatten
+
+        # Embedding Layer
+        emb_s = self.dense1(h_s)
+        embd_s = F.relu(emb_s)
+        embd_s = self.dropout(embd_s)
+        embd_s = self.dense2(embd_s)
+        embd_s = F.relu(embd_s)
+        embd_s = self.dropout(embd_s)
+        h_s = self.denseFinal(embd_s)
+
+        auxdata = {
+            "embedding": embd_s,
+        }
+
+        return h_s, auxdata
