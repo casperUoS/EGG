@@ -16,7 +16,7 @@ from egg.core.reinforce_wrappers import PPOWrapper
 from egg.zoo.logographicLang.archs import SketchEncoder, DiffDecoder, VisionEncoder
 from egg.zoo.logographicLang.wrappers import AgentWrapper, Population, PopulationDiffGame
 from egg.zoo.signal_game.archs import InformedSender, Receiver
-from egg.zoo.signal_game_drawing.features import ImageNetFeat, ImagenetLoader, CIFAR10WithObj2ID
+from egg.zoo.logographicLang.features import ImageNetFeat, ImagenetLoader, CIFAR10WithObj2ID
 from egg.zoo.signal_game_drawing.archs import DrawSender, DrawReceiver, DrawReceiverClassifier, DrawSenderDiff
 from egg.zoo.signal_game_drawing.wrappers import BezierReinforceWrapper, DiffRasterWrapper
 import wandb
@@ -89,7 +89,7 @@ def get_game(config):
         vision_path=opts.vgg_root,
     )
 
-    agent = AgentWrapper(sketch_decoder,sketch_encoder,vision_encoder)
+    agent = AgentWrapper(sketch_encoder,vision_encoder, sketch_decoder, config["game_size"])
     population = Population()
     population.generate_population(agent,2)
     game = PopulationDiffGame(population,loss_hinge)

@@ -1,4 +1,5 @@
 import random
+from copy import deepcopy
 
 import torch
 from torch import nn
@@ -21,27 +22,35 @@ class SenderWrapper(nn.Module):
     def forward(self, x):
         mu, logvar, sender_aux = self.vision_encoder(x)
         z, std = self.reparameterize(mu, logvar)
-        ouput, aux = self.sketch_decoder(z)
+        output, aux = self.sketch_decoder(z)
+
+        print(output.shape)
+
+        return output, aux
 
 
 class ReceiverWrapper(nn.Module):
-    def __init__(self, sketch_encoder, vision_encoder):
+    def __init__(self, vision_encoder, sketch_encoder, game_size):
         super(ReceiverWrapper, self).__init__()
         self.sketch_encoder = sketch_encoder
         self.vision_encoder = vision_encoder
+        self.game_size = game_size
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(logvar)
+        return mu + std*eps, std
 
     def return_embeddings(self, x):
         # embed each image (left or right)
         embs = []
         for i in range(self.game_size):
             h = x[i]
-            h = self.vision_encoder(h)
+            h, logvar, _ = self.vision_encoder(h)
             if len(h.size()) == 3:
                 h = h.squeeze(dim=-1)
-            h = h.view(h.size(0), -1)
-            h_i = self.lin1(h)
             # h_i are batch_size x embedding_size
-            h_i = h_i.unsqueeze(dim=1)
+            h_i = h.unsqueeze(dim=1)
             # h_i are now batch_size x 1 x embedding_size
             embs.append(h_i)
         h = torch.cat(embs, dim=1)
@@ -71,14 +80,14 @@ class ReceiverWrapper(nn.Module):
 
 
 class AgentWrapper(nn.Module):
-    def __init__(self, sketch_encoder, vision_encoder, sketch_decoder):
+    def __init__(self, sketch_encoder, vision_encoder, sketch_decoder, config):
         super(AgentWrapper, self).__init__()
         self.sketch_encoder = sketch_encoder
         self.vision_encoder = vision_encoder
         self.sketch_decoder = sketch_decoder
 
-        self.sender = SenderWrapper(sketch_encoder, sketch_decoder)
-        self.receiver = ReceiverWrapper(sketch_encoder, vision_encoder)
+        self.sender = SenderWrapper(vision_encoder, sketch_decoder)
+        self.receiver = ReceiverWrapper(vision_encoder, sketch_encoder, config)
 
     def get_sender(self):
         return self.sender
@@ -86,29 +95,36 @@ class AgentWrapper(nn.Module):
     def get_receiver(self):
         return self.receiver
 
+    def forward(self,x,signal,mode):
+        if mode == "s":
+            return self.sender(x)
+        if mode == "r":
+            return self.receiver(signal,x)
+
 
 class Population(nn.Module):
     def __init__(self):
         super(Population, self).__init__()
-        self.population_list = []
+        self.population = nn.ModuleList([])
 
     def generate_population(self, agent, size):
         for _ in range(size):
-            self.add_agent(agent)
+            agent_copy = deepcopy(agent)  # Create a new instance
+            self.add_agent(agent_copy)
 
     def add_agent(self, agent):
-        self.population_list.append(agent)
+        self.population.append(agent)
 
     def __len__(self):
-        return len(self.population_list)
+        return len(self.population)
 
     def get_pair(self):
-        if len(self.population_list) < 2:
+        if len(self.population) < 2:
             raise IndexError('Population must have at least two agents')
 
-        temp_population = self.population_list.copy()
-        sender = temp_population.pop(random.randint(0,len(temp_population)-1))
-        receiver = temp_population.pop(random.randint(0,len(temp_population)-1))
+        agent_index = random.sample(range(0,len(self.population)), 2)
+        sender = self.population[agent_index[0]]
+        receiver = self.population[agent_index[1]]
 
         return sender, receiver
 
@@ -152,8 +168,8 @@ class PopulationDiffGame(nn.Module):
 
     def forward(self, sender_input, labels, receiver_input=None, target_position=None, aux_input=None):
         sender, receiver = self.population.get_pair()
-        message, sender_aux = sender(sender_input, aux_input)
-        receiver_output, receiver_emb = receiver(message, receiver_input, aux_input)
+        message, sender_aux = sender(sender_input[0], receiver_input, "s")
+        receiver_output, receiver_emb = receiver(receiver_input, message, "r")
 
         loss, aux_info = self.loss(
             sender_input, message, receiver_input, receiver_output, target_position, aux_input

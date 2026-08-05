@@ -7,7 +7,7 @@ import pydiffvg
 
 class VisionEncoder(nn.Module):
 
-    def __init__(self, feat_size, vision_path, hidden_size, z_dim=128, num_splines=3,
+    def __init__(self, feat_size, vision_path, hidden_size, z_dim=20, num_splines=3,
                  critic_mode=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.feat_size = feat_size
@@ -19,8 +19,12 @@ class VisionEncoder(nn.Module):
             param.requires_grad = False
         self.vision.eval()
 
-        self.fc_mu = nn.Linear(feat_size, z_dim, bias=True)
-        self.fc_logvar = nn.Linear(feat_size, z_dim, bias=True)
+        self.lin1 = nn.Sequential(nn.Linear(feat_size, hidden_size, bias=True), nn.LeakyReLU())
+
+        self.fc_mu = nn.Linear(hidden_size, z_dim, bias=True)
+        self.fc_logvar = nn.Linear(hidden_size, z_dim, bias=True)
+
+        self.signal_game = True
 
         # self.logvar_predictor = nn.Linear(256 * 1 * 1, out_features)
         # self.mu_predictor = nn.Linear(256 * 1 * 1, out_features)
@@ -33,11 +37,15 @@ class VisionEncoder(nn.Module):
 
 
     def forward(self, x):
+        # if self.signal_game:
+        #     x = x[0]
+
         embeds = self.vision(x)
         x = embeds.view(embeds.size(0), -1)
+        x = self.lin1(x)
 
-        logvar = self.fc_mu(x)
-        mu = self.fc_logvar(x)
+        logvar = self.fc_logvar(x)
+        mu = self.fc_mu(x)
 
         auxdata = {
             "mu": mu,
@@ -49,7 +57,7 @@ class VisionEncoder(nn.Module):
 
 class DiffDecoder(nn.Module):
 
-    def __init__(self, canvas_size=28, zdim=128, hdim=1024, paths=3, segments=1):
+    def __init__(self, canvas_size=28, zdim=20, hdim=1024, paths=3, segments=1):
         super(DiffDecoder, self).__init__()
         self.imsize = canvas_size
 
