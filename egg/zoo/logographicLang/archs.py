@@ -19,7 +19,7 @@ class VisionEncoder(nn.Module):
             param.requires_grad = False
         self.vision.eval()
 
-        self.lin1 = nn.Sequential(nn.Linear(feat_size, hidden_size, bias=True), nn.LeakyReLU())
+        self.lin1 = nn.Sequential(nn.Linear(feat_size, hidden_size, bias=True), nn.SELU())
 
         self.fc_mu = nn.Linear(hidden_size, z_dim, bias=True)
         self.fc_logvar = nn.Linear(hidden_size, z_dim, bias=True)
@@ -51,6 +51,7 @@ class VisionEncoder(nn.Module):
             "mu": mu,
             "logvar": logvar,
             "embeds": embeds,
+            "vgg_features": None
         }
 
         return mu, logvar, auxdata
@@ -159,7 +160,7 @@ class DiffDecoder(nn.Module):
         return output, aux
 
 class SketchEncoder(nn.Module):
-    def __init__(self, dropout_rate=0.4, action_dim=2, classes=10, freeze_vgg=True):
+    def __init__(self, dropout_rate=0.4, action_dim=2, embedding_size=50, freeze_vgg=True):
         super(SketchEncoder, self).__init__()
 
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), stride=(1, 1), bias=True)
@@ -168,7 +169,7 @@ class SketchEncoder(nn.Module):
 
         self.dense1 = nn.Linear(in_features=30976, out_features=1024, bias=True)
         self.dense2 = nn.Linear(in_features=1024, out_features=256, bias=True)
-        self.denseFinal = nn.Linear(in_features=256, out_features=classes, bias=True)
+        self.denseFinal = nn.Linear(in_features=256, out_features=embedding_size, bias=True)
 
         self.dropout = nn.Dropout(p=dropout_rate)
 

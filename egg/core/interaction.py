@@ -246,7 +246,7 @@ message=tensor([1., 1.]), receiver_output=tensor([1., 1.]), message_length=None,
             receiver_output=_check_cat([x.receiver_output for x in interactions]),
             aux=aux,
             sender_output=_check_cat([x.sender_output for x in interactions]),
-            edge_penalty=_check_cat([x.edge_penalty for x in interactions]),
+            edge_penalty=_check_cat([x.edge_penalty for x in interactions]) if interactions[0].edge_penalty is not None else None,
             vgg_features=_check_cat([x.vgg_features for x in interactions]),
             receiver_features=_check_cat([x.receiver_features for x in interactions]),
         )

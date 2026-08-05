@@ -20,21 +20,22 @@ class SenderWrapper(nn.Module):
         return mu + std*eps, std
 
     def forward(self, x):
-        mu, logvar, sender_aux = self.vision_encoder(x)
+        mu, logvar, vision_aux = self.vision_encoder(x)
         z, std = self.reparameterize(mu, logvar)
-        output, aux = self.sketch_decoder(z)
+        output, sketch_enc_aux = self.sketch_decoder(z)
+        output = output.unsqueeze(1)
 
-        print(output.shape)
-
-        return output, aux
+        return output, (sketch_enc_aux | vision_aux)
 
 
 class ReceiverWrapper(nn.Module):
-    def __init__(self, vision_encoder, sketch_encoder, game_size):
+    def __init__(self, vision_encoder, sketch_encoder, config):
         super(ReceiverWrapper, self).__init__()
         self.sketch_encoder = sketch_encoder
         self.vision_encoder = vision_encoder
-        self.game_size = game_size
+        self.game_size = config["game_size"]
+
+        # self.vis_rep = nn.Sequential(nn.SELU(), nn.Linear(config["sender_emb_size"], config["sketch_emb_size"]))
 
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
@@ -59,7 +60,7 @@ class ReceiverWrapper(nn.Module):
     def forward(self, signal, x):
         emb = self.return_embeddings(x)
 
-        h_s = self.sketch_encoder(signal)
+        h_s, sk_enc_aux = self.sketch_encoder(signal)
         # embd_s is of size batch_size x embedding_size
         h_s = h_s.unsqueeze(dim=1)
         # h_s is of size batch_size x 1 x embedding_size
@@ -73,7 +74,7 @@ class ReceiverWrapper(nn.Module):
         log_probs = F.log_softmax(out, dim=1)
 
         auxdata = {
-            "h_s": h_s,
+            "receiver_features": h_s,
         }
 
         return log_probs, auxdata
@@ -100,6 +101,7 @@ class AgentWrapper(nn.Module):
             return self.sender(x)
         if mode == "r":
             return self.receiver(signal,x)
+        return None
 
 
 class Population(nn.Module):
@@ -169,7 +171,7 @@ class PopulationDiffGame(nn.Module):
     def forward(self, sender_input, labels, receiver_input=None, target_position=None, aux_input=None):
         sender, receiver = self.population.get_pair()
         message, sender_aux = sender(sender_input[0], receiver_input, "s")
-        receiver_output, receiver_emb = receiver(receiver_input, message, "r")
+        receiver_output, receiver_aux = receiver(receiver_input, message, "r")
 
         loss, aux_info = self.loss(
             sender_input, message, receiver_input, receiver_output, target_position, aux_input
@@ -183,7 +185,7 @@ class PopulationDiffGame(nn.Module):
             sender_output=message,
             edge_penalty=aux_info["edge_penalty"],
             vgg_features=sender_aux["vgg_features"],
-            receiver_features=receiver_emb,
+            receiver_features=receiver_aux["receiver_features"],
             receiver_input=receiver_input,
             labels=labels,
             aux_input=aux_input,

@@ -73,7 +73,7 @@ def loss_hinge(
 ):
     hinge_loss = F.multi_margin_loss(receiver_output, labels, reduction="none")
     acc = (labels == receiver_output.argmax(dim=1)).float()
-    return hinge_loss, {"acc": acc}
+    return hinge_loss, {"acc": acc, "edge_penalty": None}
 
 def get_game(config):
     if config['mode'] == "ds":
@@ -82,14 +82,15 @@ def get_game(config):
     else:
         sketch_decoder = None #Temp line
 
-    sketch_encoder = SketchEncoder()
+    sketch_encoder = SketchEncoder(embedding_size=config["z_dim"])
     vision_encoder = VisionEncoder(
         feat_size=config["feat_size"],
         hidden_size=config["sender_emb_size"],
         vision_path=opts.vgg_root,
+        z_dim=config["z_dim"]
     )
 
-    agent = AgentWrapper(sketch_encoder,vision_encoder, sketch_decoder, config["game_size"])
+    agent = AgentWrapper(sketch_encoder,vision_encoder, sketch_decoder, config)
     population = Population()
     population.generate_population(agent,2)
     game = PopulationDiffGame(population,loss_hinge)
@@ -117,6 +118,7 @@ if __name__ == "__main__":
         mode=opts.mode,
         diff_class=opts.diff_class if not None else False,
         sender_emb_size=128,  # originally 512, maybe go back to this
+        z_dim=20,
         feat_size=512,
         n_strokes=opts.n_strokes,
     )
