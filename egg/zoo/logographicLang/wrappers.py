@@ -2,15 +2,15 @@ import random
 from copy import deepcopy
 
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 
 from egg.core import LoggingStrategy
 
 
 class SenderWrapper(nn.Module):
     def __init__(self, vision_encoder, sketch_decoder):
-        super(SenderWrapper, self).__init__()
+        super().__init__()
         self.vision_encoder = vision_encoder
         self.sketch_decoder = sketch_decoder
 
@@ -21,7 +21,7 @@ class SenderWrapper(nn.Module):
 
     def forward(self, x):
         mu, logvar, vision_aux = self.vision_encoder(x)
-        z, std = self.reparameterize(mu, logvar)
+        z, _std = self.reparameterize(mu, logvar)
         output, sketch_enc_aux = self.sketch_decoder(z)
         output = output.unsqueeze(1)
 
@@ -30,7 +30,7 @@ class SenderWrapper(nn.Module):
 
 class ReceiverWrapper(nn.Module):
     def __init__(self, vision_encoder, sketch_encoder, config):
-        super(ReceiverWrapper, self).__init__()
+        super().__init__()
         self.sketch_encoder = sketch_encoder
         self.vision_encoder = vision_encoder
         self.game_size = config["game_size"]
@@ -47,7 +47,7 @@ class ReceiverWrapper(nn.Module):
         embs = []
         for i in range(self.game_size):
             h = x[i]
-            h, logvar, _ = self.vision_encoder(h)
+            h, _logvar, _ = self.vision_encoder(h)
             if len(h.size()) == 3:
                 h = h.squeeze(dim=-1)
             # h_i are batch_size x embedding_size
@@ -60,7 +60,7 @@ class ReceiverWrapper(nn.Module):
     def forward(self, signal, x):
         emb = self.return_embeddings(x)
 
-        h_s, sk_enc_aux = self.sketch_encoder(signal)
+        h_s, _sk_enc_aux = self.sketch_encoder(signal)
         # embd_s is of size batch_size x embedding_size
         h_s = h_s.unsqueeze(dim=1)
         # h_s is of size batch_size x 1 x embedding_size
@@ -82,7 +82,7 @@ class ReceiverWrapper(nn.Module):
 
 class AgentWrapper(nn.Module):
     def __init__(self, sketch_encoder, vision_encoder, sketch_decoder, config):
-        super(AgentWrapper, self).__init__()
+        super().__init__()
         self.sketch_encoder = sketch_encoder
         self.vision_encoder = vision_encoder
         self.sketch_decoder = sketch_decoder
@@ -106,7 +106,7 @@ class AgentWrapper(nn.Module):
 
 class Population(nn.Module):
     def __init__(self):
-        super(Population, self).__init__()
+        super().__init__()
         self.population = nn.ModuleList([])
 
     def generate_population(self, agent, size):
@@ -124,7 +124,7 @@ class Population(nn.Module):
         if len(self.population) < 2:
             raise IndexError('Population must have at least two agents')
 
-        agent_index = random.sample(range(0,len(self.population)), 2)
+        agent_index = random.sample(range(len(self.population)), 2)
         sender = self.population[agent_index[0]]
         receiver = self.population[agent_index[1]]
 
@@ -154,7 +154,7 @@ class PopulationDiffGame(nn.Module):
         :param train_logging_strategy, test_logging_strategy: specify what parts of interactions to persist for
             later analysis in the callbacks.
         """
-        super(PopulationDiffGame, self).__init__()
+        super().__init__()
         self.population = population
         self.loss = loss
         self.train_logging_strategy = (

@@ -2,24 +2,18 @@
 import argparse
 import os
 
-import numpy as np
 import torch
 import torch.nn.functional as F
-import torchvision.datasets
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from torchvision.datasets import CIFAR10
-from torchvision.transforms.v2 import ToPILImage
 
-import egg.core as core
-from egg.core.reinforce_wrappers import PPOWrapper
-from egg.zoo.logographicLang.archs import SketchEncoder, DiffDecoder, VisionEncoder
-from egg.zoo.logographicLang.wrappers import AgentWrapper, Population, PopulationDiffGame
-from egg.zoo.signal_game.archs import InformedSender, Receiver
-from egg.zoo.logographicLang.features import ImageNetFeat, ImagenetLoader, CIFAR10WithObj2ID
-from egg.zoo.signal_game_drawing.archs import DrawSender, DrawReceiver, DrawReceiverClassifier, DrawSenderDiff
-from egg.zoo.signal_game_drawing.wrappers import BezierReinforceWrapper, DiffRasterWrapper
 import wandb
+from egg import core
+from egg.zoo.logographicLang.archs import DiffDecoder, SketchEncoder, VisionEncoder
+from egg.zoo.logographicLang.features import CIFAR10WithObj2ID, ImagenetLoader
+from egg.zoo.logographicLang.wrappers import (
+    AgentWrapper,
+    Population,
+    PopulationDiffGame,
+)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -103,27 +97,27 @@ if __name__ == "__main__":
 
     opts = parse_arguments()
 
-    config = dict(
-        epochs=opts.n_epochs,
-        classes=10,
-        batch_size=opts.batch_size,
-        batches_per_epoch=opts.batches_per_epoch,
-        learning_rate=opts.lr,
-        dataset='cifar10',
-        game_size=opts.game_size,
-        sender_entropy_coeff=0.0000001,
-        receiver_entropy_coeff=0.1,
-        all_classes=opts.all_classes,
-        canvas_size=32,
-        same_vgg_model=False,
-        mode=opts.mode,
-        diff_class=opts.diff_class if not None else False,
-        sender_emb_size=128,  # originally 512, maybe go back to this
-        z_dim=20,
-        feat_size=512,
-        n_strokes=opts.n_strokes,
-        pop_size=opts.pop_size
-    )
+    config = {
+        "epochs": opts.n_epochs,
+        "classes": 10,
+        "batch_size": opts.batch_size,
+        "batches_per_epoch": opts.batches_per_epoch,
+        "learning_rate": opts.lr,
+        "dataset": 'cifar10',
+        "game_size": opts.game_size,
+        "sender_entropy_coeff": 0.0000001,
+        "receiver_entropy_coeff": 0.1,
+        "all_classes": opts.all_classes,
+        "canvas_size": 32,
+        "same_vgg_model": False,
+        "mode": opts.mode,
+        "diff_class": opts.diff_class if not None else False,
+        "sender_emb_size": 128,  # originally 512, maybe go back to this
+        "z_dim": 20,
+        "feat_size": 512,
+        "n_strokes": opts.n_strokes,
+        "pop_size": opts.pop_size
+    }
 
     # data_folder = os.path.join(opts.root, "train/")
     cifar_path = "data/cifar10"

@@ -1,6 +1,6 @@
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 
 import pydiffvg
 
@@ -59,7 +59,7 @@ class VisionEncoder(nn.Module):
 class DiffDecoder(nn.Module):
 
     def __init__(self, canvas_size=28, zdim=20, hdim=1024, paths=3, segments=1):
-        super(DiffDecoder, self).__init__()
+        super().__init__()
         self.imsize = canvas_size
 
         self.paths = paths
@@ -161,7 +161,7 @@ class DiffDecoder(nn.Module):
 
 class SketchEncoder(nn.Module):
     def __init__(self, dropout_rate=0.4, action_dim=2, embedding_size=50, freeze_vgg=True):
-        super(SketchEncoder, self).__init__()
+        super().__init__()
 
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), stride=(1, 1), bias=True)
         self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(3, 3), stride=(1, 1), bias=True)
