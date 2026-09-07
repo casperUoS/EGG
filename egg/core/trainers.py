@@ -14,6 +14,7 @@ from scipy import stats
 from timm.utils import accuracy
 from torch import nn, optim
 from numpy.linalg import norm
+from torch.profiler import profile, record_function, ProfilerActivity, schedule
 from torchvision import models
 
 from gensim.models import Word2Vec, KeyedVectors
@@ -26,7 +27,7 @@ except ImportError:
     from contextlib import suppress as nullcontext
 
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Subset
 
 from .batch import Batch
 from .callbacks import (
@@ -195,42 +196,61 @@ class Trainer:
         else:
             self.scaler = None
 
-    def eval(self, data=None):
+    def eval(self, data=None,is_profile=False):
         mean_loss = 0.0
         interactions = []
         n_batches = 0
         validation_data = self.validation_data if data is None else data
         self.game.eval()
-        with torch.no_grad():
-            for batch in validation_data:
-                if not isinstance(batch, Batch):
-                    batch = Batch(*batch)
-                batch = batch.to(self.device)
-                optimized_loss, interaction = self.game(*batch)
-                if (
-                    self.distributed_context.is_distributed
-                    and self.aggregate_interaction_logs
-                ):
-                    interaction = Interaction.gather_distributed_interactions(
-                        interaction
-                    )
-                interaction = interaction.to("cpu")
-                mean_loss += optimized_loss
 
-                for callback in self.callbacks:
-                    callback.on_batch_end(
-                        interaction, optimized_loss, n_batches, is_training=False
-                    )
+        my_schedule = schedule(
+            skip_first=10,
+            wait=5,
+            warmup=5,
+            active=5,
+            repeat=1)
 
-                interactions.append(interaction)
-                n_batches += 1
+        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+                     profile_memory=True,
+                     record_shapes=True,
+                     with_stack=True,
+                     schedule=my_schedule) if is_profile else nullcontext() as prof:
+            with torch.no_grad():
+                for batch in validation_data:
+                    if not isinstance(batch, Batch):
+                        batch = Batch(*batch)
+                    batch = batch.to(self.device)
+                    with record_function('model_inference') if is_profile else nullcontext():
+                        optimized_loss, interaction = self.game(*batch)
+                    if (
+                        self.distributed_context.is_distributed
+                        and self.aggregate_interaction_logs
+                    ):
+                        interaction = Interaction.gather_distributed_interactions(
+                            interaction
+                        )
+                    interaction = interaction.to("cpu")
+                    mean_loss += optimized_loss
+
+                    for callback in self.callbacks:
+                        callback.on_batch_end(
+                            interaction, optimized_loss, n_batches, is_training=False
+                        )
+
+                    interactions.append(interaction)
+                    n_batches += 1
+                    if is_profile:
+                        prof.step()
 
         mean_loss /= n_batches
         full_interaction = Interaction.from_iterable(interactions)
 
         self.full_interaction = full_interaction
 
-        return mean_loss.item(), full_interaction
+        if is_profile:
+            return mean_loss.item(), full_interaction, prof
+        else:
+            return mean_loss.item(), full_interaction
 
     def semantic_correlaton(self, vgg, val_dataloader):
 
@@ -288,6 +308,7 @@ class Trainer:
         messages = torch.squeeze(messages)
         messages = messages.unsqueeze(1)
         messages = messages.repeat(1, 3, 1, 1)
+        print(messages.shape)
         ids = self.full_interaction.labels
 
         train_messages, val_messages = np.split(messages, [int(len(messages) * 0.9)])
@@ -295,6 +316,12 @@ class Trainer:
 
         train_sketches = SketchDataset(train_messages,train_labels)
         test_sketches = SketchDataset(val_messages,val_labels)
+
+        train_indicies = np.random.choice(len(train_sketches), size=300, replace=False)
+        train_sketches = Subset(train_sketches,train_indicies)
+
+        test_indicies = np.random.choice(len(test_sketches), size=60, replace=False)
+        test_sketches = Subset(test_sketches, test_indicies)
 
         train_dataloader = DataLoader(train_sketches, batch_size=16, shuffle=True, num_workers=2)
         val_dataloader = DataLoader(test_sketches, batch_size=16, shuffle=False, num_workers=2)
@@ -491,7 +518,7 @@ class Trainer:
             ):
                 for callback in self.callbacks:
                     callback.on_validation_begin(epoch + 1)
-                validation_loss, validation_interaction = self.eval()
+                validation_loss, validation_interaction = self.eval(is_profile=False)
                 self.run.log({"test_loss": validation_loss})
                 if "acc" in validation_interaction.aux:
                     self.run.log({"test_accuracy": validation_interaction.aux["acc"].mean()})

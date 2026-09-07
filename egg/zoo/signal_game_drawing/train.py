@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
 from torchvision.transforms.v2 import ToPILImage
+from torch.profiler import profile, record_function, ProfilerActivity, schedule
 
 import egg.core as core
 from egg.core.reinforce_wrappers import PPOWrapper
@@ -277,6 +278,7 @@ if __name__ == "__main__":
                 batches_per_epoch=config['batches_per_epoch'],
                 seed=None,
                 diff_class=config['diff_class'],
+                num_workers=5,
             )
             validation_loader = ImagenetLoader(
                 test_dataset,
@@ -285,6 +287,7 @@ if __name__ == "__main__":
                 batches_per_epoch=config['batches_per_epoch'],
                 seed=21,
                 diff_class=config['diff_class'],
+                num_workers=5,
             )
         game = get_game(config)
         optimizer = core.build_optimizer(game.parameters())
@@ -309,17 +312,36 @@ if __name__ == "__main__":
 
         # 1. Run inference on the validation set to get a batch of interactions
         print("Generating sample sketch...")
-        val_loss, interaction = trainer.eval()
+        val_loss, interaction, prof = trainer.eval(is_profile=True)
+        #
+        # print("GPU profiles:")
+        # print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+        # print(prof.key_averages(group_by_input_shape=True).table(sort_by="cuda_time_total",
+        #                                                          row_limit=10))
+        #
+        # print("\nCPU profile:")
+        # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=10))
+        # print("\nCPU memory profile:")
+        # print(prof.key_averages().table(sort_by="self_cpu_memory_usage", row_limit=10))
+        #
+        #
+        # prof.export_chrome_trace(
+        #     'traces/'
+        #     + f'basic_inference_batch_{config["batch_size"]}_{config["mode"]}_nworkers_1_trace.json')
+        # prof.export_memory_timeline('traces/'
+        #                             + f'basic_inference_batch_{config["batch_size"]}_{config["mode"]}_nworkers_1_memory'
+        #                             + '.html',
+        #                             device='cuda:0')
 
-        # symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
-        #
-        # print("Symbolicity score:", symbolicity_loss)
-        # print("Symbolicity accuracy:", symbolicity_acc)
-        # print("Semanticity score:", semantic_cor)
-        #
-        # wandb.log({"symbolicity_loss": symbolicity_loss})
-        # wandb.log({"symbolicity_acc": symbolicity_acc})
-        # wandb.log({"semantic_cor": semantic_cor})
+        symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
+
+        print("Symbolicity score:", symbolicity_loss)
+        print("Symbolicity accuracy:", symbolicity_acc)
+        print("Semanticity score:", semantic_cor)
+
+        wandb.log({"symbolicity_loss": symbolicity_loss})
+        wandb.log({"symbolicity_acc": symbolicity_acc})
+        wandb.log({"semantic_cor": semantic_cor})
 
         for sample_mode in ["all","single","double"]:
 

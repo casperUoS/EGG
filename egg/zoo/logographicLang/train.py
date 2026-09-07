@@ -59,7 +59,8 @@ def parse_arguments():
     parser.add_argument("--sample_mode", default="all", help="'all': display all classes. 'single' display one class, 'double' display two classes")
     parser.add_argument("--all_classes", action=argparse.BooleanOptionalAction, help="Turns signal game into classification game")
     parser.add_argument("--diff_class", action=argparse.BooleanOptionalAction, help="wether to get different instance of class for receiver")
-    parser.add_argument("--n_strokes",type=int,default=3,help="number of strokes")
+    parser.add_argument("--n_strokes",type=int, default=3, help="number of strokes")
+    parser.add_argument("--pop_size", type=int, default=2, help="size of poputlation")
 
     opt = core.init(parser)
     assert opt.game_size >= 1
@@ -73,7 +74,7 @@ def loss_hinge(
 ):
     hinge_loss = F.multi_margin_loss(receiver_output, labels, reduction="none")
     acc = (labels == receiver_output.argmax(dim=1)).float()
-    return hinge_loss, {"acc": acc, "edge_penalty": None}
+    return hinge_loss, {"acc": acc}
 
 def get_game(config):
     if config['mode'] == "ds":
@@ -92,7 +93,7 @@ def get_game(config):
 
     agent = AgentWrapper(sketch_encoder,vision_encoder, sketch_decoder, config)
     population = Population()
-    population.generate_population(agent,2)
+    population.generate_population(agent,config["pop_size"])
     game = PopulationDiffGame(population,loss_hinge)
 
     return game
@@ -121,6 +122,7 @@ if __name__ == "__main__":
         z_dim=20,
         feat_size=512,
         n_strokes=opts.n_strokes,
+        pop_size=opts.pop_size
     )
 
     # data_folder = os.path.join(opts.root, "train/")

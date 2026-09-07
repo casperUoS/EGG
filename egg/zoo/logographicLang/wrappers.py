@@ -183,7 +183,7 @@ class PopulationDiffGame(nn.Module):
         interaction = logging_strategy.filtered_interaction(
             sender_input=sender_input,
             sender_output=message,
-            edge_penalty=aux_info["edge_penalty"],
+            # edge_penalty=aux_info["edge_penalty"],
             vgg_features=sender_aux["vgg_features"],
             receiver_features=receiver_aux["receiver_features"],
             receiver_input=receiver_input,
