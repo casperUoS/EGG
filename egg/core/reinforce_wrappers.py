@@ -226,7 +226,7 @@ class SymbolGameReinforce(nn.Module):
         return full_loss, interaction
 
 class SymbolGameDrawReinforce(SymbolGameReinforce):
-    def __init__(self, *args, canvas_size=28, **kwargs):
+    def     __init__(self, *args, canvas_size=28, **kwargs):
         super().__init__(*args, **kwargs)
         self.rotater = v2.RandomRotation(degrees=(0, 30), fill=0.3)
         self.canvas_size = canvas_size

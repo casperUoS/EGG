@@ -58,7 +58,7 @@ class DrawSender(nn.Module):
         self.signal_game = signal_game
 
 
-        # cifar10_weights = torch.load("/home/casper/Documents/Data/cifar10vgg_data/cifar10vgg.h5")
+        # cifar10_weights = torch.load("/home/*/Documents/Data/cifar10vgg_data/cifar10vgg.h5")
 
         self.vgg = torch.load(vgg_path, weights_only=False)
 
@@ -97,7 +97,7 @@ class DrawSenderDiff(nn.Module):
         self.hidden_size = hidden_size
         self.signal_game = signal_game
 
-        # cifar10_weights = torch.load("/home/casper/Documents/Data/cifar10vgg_data/cifar10vgg.h5")
+        # cifar10_weights = torch.load("/home/*/Documents/Data/cifar10vgg_data/cifar10vgg.h5")
 
         self.vgg = torch.load(vgg_path, weights_only=False)
 
@@ -160,7 +160,7 @@ class DrawReceiver(nn.Module):
         #     for p in self.vgg16.parameters():
         #         p.requires_grad = False
 
-        # cifar10_weights = torch.load("/home/casper/Documents/Data/cifar10vgg_data/cifar10vgg.h5")
+        # cifar10_weights = torch.load("/home/*/Documents/Data/cifar10vgg_data/cifar10vgg.h5")
 
         self.vgg = torch.load(vgg_path, weights_only=False)
 

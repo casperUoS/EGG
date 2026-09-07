@@ -131,7 +131,7 @@ def get_game(config):
             feat_size=feat_size,
             vgg_path=opts.vgg_root,
             hidden_size=config["sender_emb_size"],
-            out_features=6*config['n_strokes'],
+            out_features=config["sender_emb_size"],
             signal_game=False if config['all_classes'] else True,
         )
     if config["all_classes"]:
@@ -147,7 +147,7 @@ def get_game(config):
             # out_features=50,
         )
     if config['mode'] == "rf":
-        sender = BezierReinforceWrapper(sender, config['canvas_size'])
+        sender = BezierReinforceWrapper(sender, config['canvas_size'], num_splines= config['n_strokes'], z_dim=config["sender_emb_size"])
         receiver = core.ReinforceWrapper(receiver)
         game = core.SymbolGameDrawReinforce(
             sender,
@@ -311,7 +311,7 @@ if __name__ == "__main__":
         print("Generating sample sketch...")
         val_loss, interaction = trainer.eval()
 
-        # symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
+        symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
         #
         # print("Symbolicity score:", symbolicity_loss)
         # print("Symbolicity accuracy:", symbolicity_acc)

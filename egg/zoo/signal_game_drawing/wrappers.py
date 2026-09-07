@@ -162,11 +162,12 @@ class BezierReinforceWrapper(nn.Module):
     1
     """
 
-    def __init__(self, agent, canvas_size=28, std=0.1):
+    def __init__(self, agent, canvas_size=28, std=0.1, num_splines=3, z_dim=20):
         super(BezierReinforceWrapper, self).__init__()
         self.agent = agent
         self.log_std = nn.Parameter(torch.ones(1) * np.log(std))
         self.canvas_size = canvas_size
+        self.lin1 = nn.Linear(z_dim, 6*num_splines, bias=True)
 
 
     def paint_multiple_splines(self, all_spline_samples):

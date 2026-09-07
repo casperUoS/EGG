@@ -187,8 +187,8 @@ plt.legend()
 
 plt.savefig("loss.jpg")
 
-torch.save(model.state_dict(), "/home/casper/Documents/Github/EGG/egg/zoo/signal_game_drawing/data/cifar10/cifar10_vgg19_train.pth")
-torch.save(model.features, "/home/casper/Documents/Github/EGG/egg/zoo/signal_game_drawing/data/cifar10/cifar10_vgg19_features.pth")
+torch.save(model.state_dict(), "/home/*/Documents/Github/EGG/egg/zoo/signal_game_drawing/data/cifar10/cifar10_vgg19_train.pth")
+torch.save(model.features, "/home/*/Documents/Github/EGG/egg/zoo/signal_game_drawing/data/cifar10/cifar10_vgg19_features.pth")
 
 
 
