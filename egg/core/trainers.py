@@ -5,6 +5,7 @@
 
 import os
 import pathlib
+import random
 from typing import List, Optional
 
 import numpy
@@ -81,7 +82,8 @@ class Trainer:
         grad_norm: float = None,
         aggregate_interaction_logs: bool = True,
         run = None,
-        vgg_path = "",
+        vision_path = "",
+        game_size = 5,
     ):
         """
         :param game: A nn.Module that implements forward(); it is expected that forward returns a tuple of (loss, d),
@@ -112,8 +114,9 @@ class Trainer:
 
         self.update_freq = common_opts.update_freq
 
-        self.vgg_path = vgg_path
+        self.vision_path = vision_path
         self.full_interaction = None
+        self.game_size = game_size
 
         if common_opts.load_from_checkpoint is not None:
             print(
@@ -218,7 +221,7 @@ class Trainer:
             with torch.no_grad():
                 for batch in validation_data:
                     if not isinstance(batch, Batch):
-                        batch = Batch(*batch)
+                        batch = self._prepare_logographic_batch(batch)
                     batch = batch.to(self.device)
                     with record_function('model_inference') if is_profile else nullcontext():
                         optimized_loss, interaction = self.game(*batch)
@@ -252,7 +255,7 @@ class Trainer:
         else:
             return mean_loss.item(), full_interaction
 
-    def semantic_correlaton(self, vgg, val_dataloader):
+    def semantic_correlaton(self, vision, val_dataloader):
 
         cate_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
                        'dog', 'frog', 'horse', 'ship', 'truck']
@@ -263,7 +266,7 @@ class Trainer:
         for name in cate_names:
             cate2vec[name] = numpy.asarray(word2vec[name], dtype=np.float32)
 
-        feature_extractor = vgg.features
+        feature_extractor = vision.features
 
         cate_features = {}
 
@@ -425,6 +428,39 @@ class Trainer:
     #
     #     return a_coherences, p_coherences, r_coherences
 
+    def _prepare_logographic_batch(self, batch):
+        images, labels = batch[:2]
+        label_order = torch.unique(labels)
+        label_groups = [images[labels == label] for label in label_order]
+        shortest_length = min(map(len, label_groups))
+        image_grid = torch.stack(
+            [group[:shortest_length].unsqueeze(1) for group in label_groups]
+        )
+        image_grid = image_grid.flatten(start_dim=0, end_dim=1).squeeze()
+
+        usable_length = (image_grid.size(0) // self.game_size) * self.game_size
+        image_grid = image_grid[:usable_length]
+        sender_images = image_grid[::self.game_size]
+        receiver_images = image_grid.reshape(
+            -1, self.game_size, *image_grid.shape[1:]
+        )
+
+        perms = torch.stack(
+            [
+                torch.randperm(
+                    self.game_size,
+                    device=receiver_images.device,
+                )
+                for _ in range(receiver_images.shape[0])
+            ]
+        )
+        receiver_images = receiver_images.gather(
+            1,
+            perms[:, :, None, None, None].expand_as(receiver_images),
+        )
+        targets = torch.argmin(perms, dim=1)
+        return Batch(sender_images, targets, receiver_images, {})
+
     def train_epoch(self):
         mean_loss = 0
         n_batches = 0
@@ -434,11 +470,16 @@ class Trainer:
 
         self.optimizer.zero_grad()
 
+        print("dataset length =", len(self.train_data),flush=True)
+
         for batch_id, batch in enumerate(self.train_data):
+
+            batch = self._prepare_logographic_batch(batch)
+
+
             if not isinstance(batch, Batch):
                 batch = Batch(*batch)
             batch = batch.to(self.device)
-
             context = autocast() if self.scaler else nullcontext()
             with context:
                 optimized_loss, interaction = self.game(*batch)

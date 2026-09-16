@@ -1,15 +1,11 @@
 import os
+import time
 
 import torch
-import time
-import numpy as np
-import torch
-import torch.nn as nn
 import torch.nn.functional as F
-from torchvision import datasets
-from torchvision import transforms
+from torch import nn
 from torch.utils.data import DataLoader
-from torchvision import models
+from torchvision import datasets, models, transforms
 
 save_dir = "data/cifar10"
 os.makedirs(save_dir, exist_ok=True)

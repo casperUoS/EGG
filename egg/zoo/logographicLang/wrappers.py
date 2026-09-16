@@ -44,6 +44,7 @@ class ReceiverWrapper(nn.Module):
 
     def return_embeddings(self, x):
         # embed each image (left or right)
+        x = x.transpose(0,1)
         embs = []
         for i in range(self.game_size):
             h = x[i]
@@ -96,11 +97,11 @@ class AgentWrapper(nn.Module):
     def get_receiver(self):
         return self.receiver
 
-    def forward(self,x,signal,mode):
+    def forward(self,*x,mode):
         if mode == "s":
-            return self.sender(x)
+            return self.sender(*x)
         if mode == "r":
-            return self.receiver(signal,x)
+            return self.receiver(*x)
         return None
 
 
@@ -168,13 +169,15 @@ class PopulationDiffGame(nn.Module):
             else test_logging_strategy
         )
 
-    def forward(self, sender_input, labels, receiver_input=None, target_position=None, aux_input=None):
+    def forward(self, sender_input, label, receiver_input=None, aux_input=None):
         sender, receiver = self.population.get_pair()
-        message, sender_aux = sender(sender_input[0], receiver_input, "s")
-        receiver_output, receiver_aux = receiver(receiver_input, message, "r")
+        message, sender_aux = sender(sender_input, mode="s")
+        receiver_output, receiver_aux = receiver(
+            message, receiver_input, mode="r"
+        )
 
         loss, aux_info = self.loss(
-            sender_input, message, receiver_input, receiver_output, target_position, aux_input
+            receiver_output, label
         )
 
         logging_strategy = (
@@ -187,7 +190,7 @@ class PopulationDiffGame(nn.Module):
             vgg_features=sender_aux["vgg_features"],
             receiver_features=receiver_aux["receiver_features"],
             receiver_input=receiver_input,
-            labels=labels,
+            labels=label,
             aux_input=aux_input,
             receiver_output=receiver_output.detach(),
             message=message.detach(),

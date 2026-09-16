@@ -12,6 +12,8 @@ import torch.nn.parallel
 import torch.utils.data as data
 from torchvision import transforms
 
+from model_utilities.datasets.imagenet_subsets_wids import ImageNet50WIDS
+
 
 class _BatchIterator:
     def __init__(self, loader, n_batches, seed=None, diff_class=False):
@@ -127,7 +129,6 @@ class CIFAR10WithObj2ID(data.Dataset):
         from torchvision.datasets import CIFAR10
 
         self.dataset = CIFAR10(root=root, train=train, download=download, transform=transforms.ToTensor())
-        self.data = self.dataset.data
         self.targets = self.dataset.targets
         self.create_obj2id()
 
@@ -204,3 +205,97 @@ class ImageNetFeat(data.Dataset):
                 self.obj2id[idx_label]["labels"] = labels[i]
                 self.obj2id[idx_label]["ims"] = []
             self.obj2id[idx_label]["ims"].append(i)
+
+
+class ImageNet50WIDSFeat(ImageNet50WIDS):
+    def __init__(
+        self,
+        root,
+        transform=None,
+        target_transform=None,
+        n_distractors=5,
+        **kwargs,
+    ):
+        super().__init__(
+            root,
+            transform=transform,
+            target_transform=target_transform,
+            **kwargs,
+        )
+
+        self.n_distractors = n_distractors
+        self.targets = [
+            self._target_for_index(index)
+            for index in range(len(self))
+        ]
+
+        self.obj2id = {}
+        for index, label in enumerate(self.targets):
+            self.obj2id.setdefault(label, []).append(index)
+
+    def __getitem__(self, index):
+        target_image, target_label = super().__getitem__(index)
+
+        same_class_indices = [
+            i for i in self.obj2id[target_label]
+            if i != index
+        ]
+
+        if not same_class_indices:
+            raise ValueError(
+                f"Target class {target_label} has no other image."
+            )
+
+        same_class_index = np.random.choice(same_class_indices)
+
+        other_classes = [
+            label for label in self.obj2id
+            if label != target_label
+        ]
+
+        if len(other_classes) < self.n_distractors - 1:
+            raise ValueError("Not enough different classes.")
+
+        selected_classes = np.random.choice(
+            other_classes,
+            size=self.n_distractors - 1,
+            replace=False,
+        )
+
+        distractor_indices = [same_class_index]
+        for label in selected_classes:
+            distractor_indices.append(
+                np.random.choice(self.obj2id[label])
+            )
+        perm = np.random.permutation(self.n_distractors)
+        distractor_indices = [distractor_indices[i] for i in perm]
+        target_index = np.flatnonzero(perm == 0)[0]
+        
+
+        get_parent_item = super().__getitem__
+        distractor_images = [
+            get_parent_item(i)[0]
+            for i in distractor_indices
+        ]
+
+        distractor_images = torch.stack(distractor_images)
+
+        # images = torch.stack([target_image, *distractor_images])
+
+        return target_image, target_index, distractor_images, {}
+
+    def _target_for_index(self, index):
+        full_index = int(self.indices[index])
+        sample = self._get_dataset()[full_index]
+
+        target = sample[".cls"]
+
+        if hasattr(target, "read"):
+            target = target.read()
+
+        if isinstance(target, (bytes, bytearray, memoryview)):
+            target = bytes(target).decode("ascii")
+
+        return self._target_mapping[int(target)]
+
+        

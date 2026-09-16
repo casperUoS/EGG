@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torchvision import models
 
 import pydiffvg
 
@@ -13,13 +14,27 @@ class VisionEncoder(nn.Module):
         self.feat_size = feat_size
         self.hidden_size = hidden_size
 
-        self.vision = torch.load(vision_path, weights_only=False)
+        NUM_CLASSES = 50
+
+        model = models.resnet50()
+        num_features = model.fc.in_features
+        model.fc = nn.Linear(num_features, NUM_CLASSES)
+
+        state_dict = torch.load(vision_path, weights_only=True)
+        model.load_state_dict(state_dict)
+        self.vision = model
+        
+        modules=list(self.vision.children())[:-1]
+        self.vision = nn.Sequential(*modules)
+        backbone_features = num_features
 
         for param in self.vision.parameters():
             param.requires_grad = False
         self.vision.eval()
 
-        self.lin1 = nn.Sequential(nn.Linear(feat_size, hidden_size, bias=True), nn.SELU())
+        self.lin1 = nn.Sequential(
+            nn.Linear(backbone_features, hidden_size, bias=True), nn.SELU()
+        )
 
         self.fc_mu = nn.Linear(hidden_size, z_dim, bias=True)
         self.fc_logvar = nn.Linear(hidden_size, z_dim, bias=True)

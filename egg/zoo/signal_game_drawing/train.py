@@ -9,20 +9,25 @@ import os
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torchvision.datasets
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
 from torchvision.transforms.v2 import ToPILImage
-from torch.profiler import profile, record_function, ProfilerActivity, schedule
 
-import egg.core as core
-from egg.core.reinforce_wrappers import PPOWrapper
-from egg.zoo.signal_game.archs import InformedSender, Receiver
-from egg.zoo.signal_game_drawing.features import ImageNetFeat, ImagenetLoader, CIFAR10WithObj2ID
-from egg.zoo.signal_game_drawing.archs import DrawSender, DrawReceiver, DrawReceiverClassifier, DrawSenderDiff
-from egg.zoo.signal_game_drawing.wrappers import BezierReinforceWrapper, DiffRasterWrapper
 import wandb
+from egg import core
+from egg.core.reinforce_wrappers import PPOWrapper
+from egg.zoo.signal_game_drawing.archs import (
+    DrawReceiver,
+    DrawReceiverClassifier,
+    DrawSender,
+    DrawSenderDiff,
+)
+from egg.zoo.signal_game_drawing.features import CIFAR10WithObj2ID, ImagenetLoader
+from egg.zoo.signal_game_drawing.wrappers import (
+    BezierReinforceWrapper,
+    DiffRasterWrapper,
+)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

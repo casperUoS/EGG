@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# runner folder
+runner/
+
 # vim swap files
 *.swp
 *.swo
