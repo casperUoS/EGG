@@ -4,6 +4,7 @@ from copy import deepcopy
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torchvision.transforms.functional import InterpolationMode, rotate
 
 from egg.core import LoggingStrategy
 
@@ -24,8 +25,11 @@ class SenderWrapper(nn.Module):
         z, _std = self.reparameterize(mu, logvar)
         output, sketch_enc_aux = self.sketch_decoder(z)
         output = output.unsqueeze(1)
+        sender_aux = (sketch_enc_aux | vision_aux)
+        sender_aux['mu'] = mu
+        sender_aux['log_var'] = logvar
 
-        return output, (sketch_enc_aux | vision_aux)
+        return output, sender_aux
 
 
 class ReceiverWrapper(nn.Module):
@@ -88,7 +92,10 @@ class AgentWrapper(nn.Module):
         self.vision_encoder = vision_encoder
         self.sketch_decoder = sketch_decoder
 
-        self.sender = SenderWrapper(vision_encoder, sketch_decoder)
+        self.sender = SenderWrapper(
+            vision_encoder,
+            sketch_decoder,
+        )
         self.receiver = ReceiverWrapper(vision_encoder, sketch_encoder, config)
 
     def get_sender(self):
@@ -141,6 +148,7 @@ class PopulationDiffGame(nn.Module):
             loss,
             train_logging_strategy = None,
             test_logging_strategy = None,
+            max_rotation = 30.0,
     ):
         """
         :param sender: Sender agent. sender.forward() has to output log-probabilities over the vocabulary.
@@ -158,8 +166,17 @@ class PopulationDiffGame(nn.Module):
         super().__init__()
         self.population = population
         self.loss = loss
+        self.max_rotation = max_rotation
         self.train_logging_strategy = (
-            LoggingStrategy()
+            LoggingStrategy(
+                store_sender_input=False,
+                store_receiver_input=False,
+                store_message=False,
+                store_receiver_output=False,
+                store_sender_output=False,
+                store_vgg_features=False,
+                store_receiver_features=False,
+            )
             if train_logging_strategy is None
             else train_logging_strategy
         )
@@ -169,15 +186,49 @@ class PopulationDiffGame(nn.Module):
             else test_logging_strategy
         )
 
-    def forward(self, sender_input, label, receiver_input=None, aux_input=None):
+    # def rotate_message(self, message):
+    #     batch_size = message.size(0)
+    #     angles = torch.empty(batch_size, device=message.device).uniform_(
+    #         -self.max_rotation, self.max_rotation
+    #     )
+    #     angles = angles * torch.pi / 180.0
+
+    #     cos_angles = torch.cos(angles)
+    #     sin_angles = torch.sin(angles)
+    #     theta = torch.zeros(
+    #         batch_size, 2, 3, device=message.device, dtype=message.dtype
+    #     )
+    #     theta[:, 0, 0] = cos_angles
+    #     theta[:, 0, 1] = -sin_angles
+    #     theta[:, 1, 0] = sin_angles
+    #     theta[:, 1, 1] = cos_angles
+
+    #     grid = F.affine_grid(theta, message.size(), align_corners=False)
+    #     return F.grid_sample(
+    #         message,
+    #         grid,
+    #         mode="bilinear",
+    #         padding_mode="zeros",
+    #         align_corners=False,
+    #     )
+        
+
+    def forward(self, sender_input, label, receiver_input=None, aux_input=None, epoch=0):
         sender, receiver = self.population.get_pair()
         message, sender_aux = sender(sender_input, mode="s")
+        angle = torch.empty(1, device=message.device).uniform_(-15, 15).item()
+        if self.training:
+            message = rotate(
+                message,
+                angle=angle,
+                interpolation=InterpolationMode.BILINEAR,
+            )
         receiver_output, receiver_aux = receiver(
             message, receiver_input, mode="r"
         )
 
         loss, aux_info = self.loss(
-            receiver_output, label
+            receiver_output, label, sender_aux['mu'], sender_aux['log_var'], epoch=epoch,
         )
 
         logging_strategy = (

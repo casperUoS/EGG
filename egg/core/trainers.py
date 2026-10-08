@@ -167,7 +167,7 @@ class Trainer:
         if self.distributed_context.is_distributed:
             device_id = self.distributed_context.local_rank
             torch.cuda.set_device(device_id)
-            self.game.to(device_id)
+            self.game.to(device_id,non_blocking=True)
 
             # NB: here we are doing something that is a bit shady:
             # 1/ optimizer was created outside of the Trainer instance, so we don't really know
@@ -188,7 +188,7 @@ class Trainer:
             self.optimizer.state = move_to(self.optimizer.state, device_id)
 
         else:
-            self.game.to(self.device)
+            self.game.to(self.device, non_blocking=True)
             # NB: some optimizers pre-allocate buffers before actually doing any steps
             # since model is placed on GPU within Trainer, this leads to having optimizer's state and model parameters
             # on different devices. Here, we protect from that by moving optimizer's internal state to the proper device
@@ -222,9 +222,9 @@ class Trainer:
                 for batch in validation_data:
                     if not isinstance(batch, Batch):
                         batch = self._prepare_logographic_batch(batch)
-                    batch = batch.to(self.device)
+                    batch = batch.to(self.device, non_blocking=True)
                     with record_function('model_inference') if is_profile else nullcontext():
-                        optimized_loss, interaction = self.game(*batch)
+                        optimized_loss, interaction = self.game(*batch, epoch=0)
                     if (
                         self.distributed_context.is_distributed
                         and self.aggregate_interaction_logs
@@ -305,7 +305,7 @@ class Trainer:
         a = stats.pearsonr(np.array(x), np.array(y))
         return a[0]
 
-    def symbolicity_eval(self, epochs = 10):
+    def symbolicity_eval(self, epochs = 10, num_classes = 10):
 
         messages = self.full_interaction.message
         messages = torch.squeeze(messages)
@@ -332,7 +332,7 @@ class Trainer:
         vgg = models.vgg16(pretrained=False)
         vgg.load_state_dict(torch.load("data/vgg16_pretrained.pth"))
 
-        vgg.classifier[-1] = nn.Linear(vgg.classifier[-1].in_features, 10)
+        vgg.classifier[-1] = nn.Linear(vgg.classifier[-1].in_features, num_classes)
 
         for param in vgg.features.parameters():
             param.requires_grad = False
@@ -461,7 +461,7 @@ class Trainer:
         targets = torch.argmin(perms, dim=1)
         return Batch(sender_images, targets, receiver_images, {})
 
-    def train_epoch(self):
+    def train_epoch(self, epoch):
         mean_loss = 0
         n_batches = 0
         interactions = []
@@ -470,8 +470,6 @@ class Trainer:
 
         self.optimizer.zero_grad()
 
-        print("dataset length =", len(self.train_data),flush=True)
-
         for batch_id, batch in enumerate(self.train_data):
 
             batch = self._prepare_logographic_batch(batch)
@@ -479,12 +477,13 @@ class Trainer:
 
             if not isinstance(batch, Batch):
                 batch = Batch(*batch)
-            batch = batch.to(self.device)
+            batch = batch.to(self.device, non_blocking=True)
             context = autocast() if self.scaler else nullcontext()
             with context:
-                optimized_loss, interaction = self.game(*batch)
+                optimized_loss, interaction = self.game(*batch, epoch=epoch)
 
                 if self.update_freq > 1:
+                    print("asdfoijfadsoijdfsaoijadfso")
                     # throughout EGG, we minimize _mean_ loss, not sum
                     # hence, we need to account for that when aggregating grads
                     optimized_loss = optimized_loss / self.update_freq
@@ -538,7 +537,7 @@ class Trainer:
             for callback in self.callbacks:
                 callback.on_epoch_begin(epoch + 1)
 
-            train_loss, train_interaction = self.train_epoch()
+            train_loss, train_interaction = self.train_epoch(epoch)
             self.run.log({"train_loss": train_loss})
             if "acc" in train_interaction.aux:
                 self.run.log({"train_accuracy": train_interaction.aux["acc"].mean()})

@@ -256,7 +256,7 @@ def _set_seed(seed) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def move_to(x: Any, device: torch.device) -> Any:
+def move_to(x: Any, device: torch.device, non_blocking: bool = False) -> Any:
     """
     Simple utility function that moves a tensor or a dict/list/tuple of (dict/list/tuples of ...) tensors
         to a specified device, recursively.
@@ -266,12 +266,12 @@ def move_to(x: Any, device: torch.device) -> Any:
              For dicts, the changes are done in-place!
     """
     if hasattr(x, "to"):
-        return x.to(device)
+        return x.to(device, non_blocking=non_blocking)
     if isinstance(x, list) or isinstance(x, tuple):
-        return [move_to(i, device) for i in x]
+        return [move_to(i, device, non_blocking) for i in x]
     if isinstance(x, dict) or isinstance(x, defaultdict):
         for k, v in x.items():
-            x[k] = move_to(v, device)
+            x[k] = move_to(v, device, non_blocking)
         return x
     return x
 

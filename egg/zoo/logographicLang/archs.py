@@ -5,24 +5,46 @@ from torchvision import models
 
 import pydiffvg
 
+class DinoClassifier(nn.Module):
+    def __init__(self, model, num_classes):
+        super().__init__()
+        self.dino = model
+        self.lin1 = nn.Sequential(nn.Linear(768, 256), nn.ReLU())
+        self.classifier =  nn.Linear(256, num_classes)
+
+    def forward(self, x):
+       x = self.dino(x)
+       x = self.lin1(x)
+       x = self.classifier(x)
+       return x
+
 
 class VisionEncoder(nn.Module):
 
-    def __init__(self, feat_size, vision_path, hidden_size, z_dim=20, num_splines=3,
-                 critic_mode=False, *args, **kwargs):
+    def __init__(self, feat_size, vision_path, hidden_size, num_classes, z_dim=20, num_splines=3,
+                 critic_mode=False, model_name="resnet", *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.feat_size = feat_size
         self.hidden_size = hidden_size
 
-        NUM_CLASSES = 50
+        REPO_DIR = "/home/cd6g22/EGG/dinov3"
 
-        model = models.resnet50()
-        num_features = model.fc.in_features
-        model.fc = nn.Linear(num_features, NUM_CLASSES)
+        if model_name == "dino":
+            dinov3 = torch.hub.load(REPO_DIR, 'dinov3_vitb16', source='local')
+            dino_clas = DinoClassifier(dinov3, num_classes)
+            state_dict = torch.load(vision_path)
+            dino_clas.load_state_dict(state_dict)
+            num_features = dino_clas.classifier.in_features
+            self.vision = dino_clas
+        else:
 
-        state_dict = torch.load(vision_path, weights_only=True)
-        model.load_state_dict(state_dict)
-        self.vision = model
+            model = models.resnet50()
+            num_features = model.fc.in_features
+            model.fc = nn.Linear(num_features, num_classes)
+
+            state_dict = torch.load(vision_path, weights_only=True)
+            model.load_state_dict(state_dict)
+            self.vision = model
         
         modules=list(self.vision.children())[:-1]
         self.vision = nn.Sequential(*modules)
@@ -35,11 +57,14 @@ class VisionEncoder(nn.Module):
         self.lin1 = nn.Sequential(
             nn.Linear(backbone_features, hidden_size, bias=True), nn.SELU()
         )
+        self.batch_norm = nn.BatchNorm1d(backbone_features)
 
         self.fc_mu = nn.Linear(hidden_size, z_dim, bias=True)
         self.fc_logvar = nn.Linear(hidden_size, z_dim, bias=True)
 
         self.signal_game = True
+
+        self.dropout = nn.Dropout(p=0.4)
 
         # self.logvar_predictor = nn.Linear(256 * 1 * 1, out_features)
         # self.mu_predictor = nn.Linear(256 * 1 * 1, out_features)
@@ -57,6 +82,8 @@ class VisionEncoder(nn.Module):
 
         embeds = self.vision(x)
         x = embeds.view(embeds.size(0), -1)
+        x = self.batch_norm(x)
+        x = self.dropout(x)
         x = self.lin1(x)
 
         logvar = self.fc_logvar(x)
@@ -80,13 +107,21 @@ class DiffDecoder(nn.Module):
         self.paths = paths
         self.segments = segments
         self.stroke_width = (2.0, 2.0)
+        self.stroke_width_tensor = torch.tensor(1.0)
+        self.stroke_color = torch.tensor([1.0, 1.0, 1.0, 1.0])
+        self.num_control_points = torch.full((segments,), 2, dtype=torch.int32)
+        
 
         self.decoder = nn.Sequential(
             nn.Linear(zdim, hdim),
+            nn.BatchNorm1d(hdim),
             nn.SELU(inplace=True),
+            nn.Dropout(p=0.4),
 
             nn.Linear(hdim, hdim),
+            nn.BatchNorm1d(hdim),
             nn.SELU(inplace=True),
+            nn.Dropout(p=0.4),
         )
 
         self.point_predictor = nn.Sequential(
@@ -117,6 +152,10 @@ class DiffDecoder(nn.Module):
 
         all_points = all_points * (self.imsize // 2 - 2) + self.imsize // 2
 
+        # all_points = all_points.cpu()
+
+        pydiffvg.set_use_gpu(True)
+
         # Process the batch sequentially
         outputs = []
         scenes = []
@@ -125,22 +164,21 @@ class DiffDecoder(nn.Module):
             shapes = []
             shape_groups = []
             for p in range(self.paths):
-                points = all_points[k, p].contiguous().cpu()
-                width = torch.tensor(1.0).cpu()
-                alpha = torch.tensor(1.0).cpu()
-
-                color = torch.cat([torch.ones(3), alpha.view(1, )])
-                num_ctrl_pts = torch.zeros(self.segments, dtype=torch.int32) + 2
+                points = all_points[k, p].contiguous()
 
                 path = pydiffvg.Path(
-                    num_control_points=num_ctrl_pts, points=points,
-                    stroke_width=width, is_closed=False)
+                    num_control_points=self.num_control_points,
+                    points=points,
+                    stroke_width=self.stroke_width_tensor,
+                    is_closed=False,
+                )
 
                 shapes.append(path)
                 path_group = pydiffvg.ShapeGroup(
-                    shape_ids=torch.tensor([len(shapes) - 1]),
+                    shape_ids=torch.tensor([p]),
                     fill_color=None,
-                    stroke_color=color)
+                    stroke_color=self.stroke_color,
+                )
                 shape_groups.append(path_group)
 
             scenes.append(
@@ -186,24 +224,36 @@ class SketchEncoder(nn.Module):
         self.dense2 = nn.Linear(in_features=1024, out_features=256, bias=True)
         self.denseFinal = nn.Linear(in_features=256, out_features=embedding_size, bias=True)
 
+        self.batchNorm1 = nn.BatchNorm2d(16)
+        self.batchNorm2 = nn.BatchNorm2d(32)
+        self.batchNorm3 = nn.BatchNorm2d(64)
+        self.batchNorm4 = nn.BatchNorm1d(1024)
+        self.batchNorm5 = nn.BatchNorm1d(256)
+
+
         self.dropout = nn.Dropout(p=dropout_rate)
 
     def forward(self, x):
         if len(x.size()) == 3:
             signal = x.unsqueeze(1)
         h_s = self.conv1(x)
+        h_s = self.batchNorm1(h_s)
         h_s = F.relu(h_s)
         h_s = self.conv2(h_s)
+        h_s = self.batchNorm2(h_s)
         h_s = F.relu(h_s)
         h_s = self.conv3(h_s)
+        h_s = self.batchNorm3(h_s)
         h_s = F.relu(h_s)
         h_s = h_s.reshape((h_s.shape[0], -1))  # Flatten
 
         # Embedding Layer
         emb_s = self.dense1(h_s)
+        embd_s = self.batchNorm4(emb_s)
         embd_s = F.relu(emb_s)
         embd_s = self.dropout(embd_s)
         embd_s = self.dense2(embd_s)
+        embd_s = self.batchNorm5(embd_s)
         embd_s = F.relu(embd_s)
         embd_s = self.dropout(embd_s)
         h_s = self.denseFinal(embd_s)

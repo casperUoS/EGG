@@ -4,6 +4,7 @@ import os
 
 import torch
 import torch.nn.functional as F
+from torchvision.transforms import v2
 from model_utilities.datasets import make_wids_sampler
 from torch.utils.data import DataLoader
 from torchvision import transforms
@@ -62,8 +63,9 @@ def parse_arguments():
     parser.add_argument("--diff_class", action=argparse.BooleanOptionalAction, help="wether to get different instance of class for receiver")
     parser.add_argument("--n_strokes",type=int, default=3, help="number of strokes")
     parser.add_argument("--pop_size", type=int, default=2, help="size of poputlation")
-    parser.add_argument("--dataset", default="imageNet10", help="choose dataset")
-
+    parser.add_argument("--dataset", default="imageNet", help="choose dataset")
+    parser.add_argument("--loss", default="hinge", help="chose loss function")
+    parser.add_argument("--vision_name", default="resnet", help="choose the name of the pretrained vision model")
     opt = core.init(parser)
     assert opt.game_size >= 1
 
@@ -72,11 +74,33 @@ def parse_arguments():
 
 #NOTE this excludes the edge pentalty loss, which
 def loss_hinge(
-     receiver_output, labels
+     receiver_output, labels, x, y, epoch
 ):
     hinge_loss = F.multi_margin_loss(receiver_output, labels, reduction="none")
     acc = (labels == receiver_output.argmax(dim=1)).float()
     return hinge_loss, {"acc": acc}
+
+def kld_Loss(mu, logvar):
+    KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    return KLD
+
+def elbo_loss(reciever_output, targets, mu, logvar, epoch):
+    # print("reciever_output:", reciever_output, flush=True)
+    # print("targets:", targets.shape, flush=True)
+    recon_loss = F.multi_margin_loss(reciever_output, targets)
+    kld_loss = kld_Loss(mu,logvar)
+    acc = (targets == reciever_output.argmax(dim=1)).float()
+    beta = get_beta(epoch)
+    return recon_loss + beta * kld_loss, {"acc": acc}
+
+def get_beta(epoch, warmup_epochs=10, ramp_epochs=20, beta_max=1e-3):
+    if epoch < warmup_epochs:
+        return 0.0
+    elif epoch < warmup_epochs + ramp_epochs:
+        progress = (epoch - warmup_epochs) / ramp_epochs
+        return beta_max * progress  # linear ramp; swap for sigmoid if you want smoother
+    else:
+        return beta_max
 
 def get_game(config):
     if config['mode'] == "ds":
@@ -90,13 +114,20 @@ def get_game(config):
         feat_size=config["feat_size"],
         hidden_size=config["sender_emb_size"],
         vision_path=opts.vision_root,
-        z_dim=config["z_dim"]
+        num_classes=config["num_classes"],
+        z_dim=config["z_dim"],
+        model_name=config["vision_name"]
     )
 
     agent = AgentWrapper(sketch_encoder,vision_encoder, sketch_decoder, config)
     population = Population()
     population.generate_population(agent,config["pop_size"])
-    game = PopulationDiffGame(population,loss_hinge)
+    if config['loss'] == "hinge":
+        game = PopulationDiffGame(population,loss_hinge)
+    elif config['loss'] == "vae":
+        game = PopulationDiffGame(population,elbo_loss)
+    else:
+        game = PopulationDiffGame(population,loss_hinge)
 
     return game
 
@@ -111,7 +142,7 @@ if __name__ == "__main__":
 
     config = {
         "epochs": opts.n_epochs,
-        "classes": 10,
+        "num_classes": 50 if opts.dataset == "imageNet" else 10,
         "batch_size": opts.batch_size,
         "batches_per_epoch": opts.batches_per_epoch,
         "learning_rate": opts.lr,
@@ -128,34 +159,75 @@ if __name__ == "__main__":
         "feat_size": 2048,
         "n_strokes": opts.n_strokes,
         "pop_size": opts.pop_size,
-        "dataset": opts.dataset
+        "dataset": opts.dataset,
+        "loss": opts.loss,
+        "vision_name": opts.vision_name
     }
 
-    transform_train = transforms.Compose([
-        transforms.RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
-        transforms.RandomRotation(15),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                            std=[0.229, 0.224, 0.225]),
-    ])
+    if config['vision_name'] == 'dino':
 
-    transform_test = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                            std=[0.229, 0.224, 0.225]),
-    ])
+        transform_train = v2.Compose([
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.RandomResizedCrop(224),
+            v2.RandomHorizontalFlip(),
+            v2.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
+            v2.RandomRotation(degrees=(-15.0, 15.0)),
+            v2.Normalize(mean=(0.485, 0.456, 0.406),std=(0.229, 0.224, 0.225),),
+        ])
 
-    if config["dataset"] == "imageNet10":
+
+        transform_test = v2.Compose([
+            v2.ToImage(),
+            v2.Resize(256, antialias=True),
+            v2.CenterCrop(224),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize(mean=(0.485, 0.456, 0.406),std=(0.229, 0.224, 0.225),)
+        ])
+
+    else:
+
+        transform_train = transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
+            transforms.RandomRotation(15),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                std=[0.229, 0.224, 0.225]),
+        ])
+
+        transform_test = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                std=[0.229, 0.224, 0.225]),
+        ])
+
+    if config["dataset"] == "imageNet":
         train_dataset = ImageNet50WIDS("/iridisfs/vlcgroup/vision_datasets/imagenet_webdataset/train", transform=transform_train)
         test_dataset = ImageNet50WIDS("/iridisfs/vlcgroup/vision_datasets/imagenet_webdataset/val", transform=transform_test)
         train_sampler = make_wids_sampler(train_dataset)
         test_sampler = make_wids_sampler(test_dataset)
-        train_loader = DataLoader(train_dataset, batch_size=config['batch_size'],sampler=train_sampler, num_workers=5)
-        validation_loader = DataLoader(test_dataset, batch_size=config['batch_size'],sampler=test_sampler, num_workers=5)
+        train_loader = DataLoader(
+            train_dataset, 
+            batch_size=config['batch_size'],
+            sampler=train_sampler, 
+            num_workers=8,
+            persistent_workers=True,
+            pin_memory=True,
+            prefetch_factor=2,
+        )
+        validation_loader = DataLoader(
+            test_dataset, 
+            batch_size=config['batch_size']
+            ,sampler=test_sampler,
+            num_workers=8,
+            persistent_workers=True,
+            pin_memory=True,
+            prefetch_factor=2,
+        )
 
     else:
         cifar_path = "data/cifar10"
@@ -172,6 +244,10 @@ if __name__ == "__main__":
             batches_per_epoch=config['batches_per_epoch'],
             seed=None,
             diff_class=config['diff_class'],
+            num_workers=8,
+            persistent_workers=True,
+            pin_memory=True,
+            prefetch_factor=2,
         )
         validation_loader = ImagenetLoader(
             test_dataset,
@@ -180,6 +256,10 @@ if __name__ == "__main__":
             batches_per_epoch=config['batches_per_epoch'],
             seed=21,
             diff_class=config['diff_class'],
+            num_workers=8,
+            persistent_workers=True,
+            pin_memory=True,
+            prefetch_factor=2,
         )
     
     game = get_game(config)
@@ -211,20 +291,22 @@ if __name__ == "__main__":
         val_loss, interaction = trainer.eval()
 
         # symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
-        #
+        
         # print("Symbolicity score:", symbolicity_loss)
         # print("Symbolicity accuracy:", symbolicity_acc)
         # print("Semanticity score:", semantic_cor)
-        #
+        
         # wandb.log({"symbolicity_loss": symbolicity_loss})
         # wandb.log({"symbolicity_acc": symbolicity_acc})
         # wandb.log({"semantic_cor": semantic_cor})
 
-        for sample_mode in ["all","single","double"]:
+        # for sample_mode in ["all","single","double"]:
+        for sample_mode in ["all","single"]:
         
             sketches = interaction.message.detach().cpu()
             splines = interaction.sender_output.detach().cpu()
             sender_input = interaction.sender_input.detach().cpu()
+            # print("sender input,",sender_input.shape, flush=True)
             # receiver_input = interaction.receiver_input.detach().cpu()
             receiver_output = interaction.receiver_output.detach().cpu()
             labels = interaction.labels.detach().cpu()
@@ -234,6 +316,7 @@ if __name__ == "__main__":
             import matplotlib.pyplot as plt
 
             # Pick the first image in the batch
+            print("sample_size: ", sketches.shape, flush=True)
             sample = sketches[0]
 
             # Remove the channel dimension if it exists (e.g., convert 1x28x28 to 28x28)
@@ -251,8 +334,8 @@ if __name__ == "__main__":
             # print("reciever_output=",receiver_output)
             # print("labels=",labels)
 
-            class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
-                            'dog', 'frog', 'horse', 'ship', 'truck']
+            # class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
+            #                 'dog', 'frog', 'horse', 'ship', 'truck']
 
             num_samples = min(32, sketches.size(0))
             max_rows = 8
@@ -276,7 +359,8 @@ if __name__ == "__main__":
             # print("single_class_idx", single_class_idx)
 
             if sample_mode == "single":
-                single_class_idx = (labels == 0).nonzero(as_tuple=True)[0]
+                single_class_idx = (labels == 0).nonzero(as_tuple=True)[0][0:num_samples]
+                print("SDODSF", sketches.shape, flush=True)
                 sketches = sketches[single_class_idx]
                 labels = labels[single_class_idx]
                 # edge_penalty = edge_penalty[single_class_idx]
@@ -318,11 +402,13 @@ if __name__ == "__main__":
                 if original_sample.ndim == 3:
                     original_sample = original_sample.permute(1, 2, 0)
 
-                if original_sample.max() > 1.0:
-                    original_sample = original_sample / 255.0
+                # if original_sample.max() > 1.0:
+                #     original_sample = original_sample / 255.0
 
-                long_img.append(original_sample)
-                long_img.append(sketch_sample.unsqueeze(2).expand(-1, -1, 3))
+                print("original sample,", original_sample.shape, flush=True)
+
+                # long_img.append(original_sample)
+                # long_img.append(sketch_sample.unsqueeze(2).expand(-1, -1, 3))
 
                 class_idx = labels[i].item()
                 class_name = class_idx

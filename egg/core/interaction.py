@@ -50,7 +50,7 @@ class LoggingStrategy:
             message_length=message_length if self.store_message_length else None,
             aux=aux,
             sender_output=sender_output if self.store_sender_output else None,
-            vgg_features= vgg_features if self.store_vgg_features else None,
+            vgg_features= vgg_features if self.store_vgg_features else None, #TODO find a way to add .detach() here that doesn't crash when None
             receiver_features= receiver_features if self.store_receiver_features else None,
         )
 
@@ -166,6 +166,8 @@ class Interaction:
         self.message = _to(self.message)
         self.receiver_output = _to(self.receiver_output)
         self.message_length = _to(self.message_length)
+        self.vgg_features = _to(self.vgg_features)
+        self.receiver_features = _to(self.receiver_features)
 
         if self.aux_input:
             self.aux_input = dict((k, _to(v)) for k, v in self.aux_input.items())
@@ -230,8 +232,8 @@ message=tensor([1., 1.]), receiver_output=tensor([1., 1.]), message_length=None,
             aux[k] = _check_cat([x.aux[k] for x in interactions])
 
         return Interaction(
-            sender_input=_check_cat([x.sender_input for x in interactions], nonSingular=True if interactions[0].sender_input.ndim == 5 else False),
-            receiver_input=_check_cat([x.receiver_input for x in interactions], nonSingular=True if interactions[0].sender_input.ndim == 5 else False),
+            sender_input=_check_cat([x.sender_input for x in interactions]),
+            receiver_input=_check_cat([x.receiver_input for x in interactions]),
             labels=_check_cat([x.labels for x in interactions]),
             aux_input=aux_input,
             message=_check_cat([x.message for x in interactions]),

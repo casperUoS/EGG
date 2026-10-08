@@ -114,3 +114,6 @@ venv.bak/
 wandb/**
 runner.sh
 slurm-*.out
+
+egg/zoo/logographicLang/pretrained-models/
+dinov3/

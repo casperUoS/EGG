@@ -69,12 +69,12 @@ class Batch:
             [self.sender_input, self.labels, self.receiver_input, self.aux_input]
         )
 
-    def to(self, device: torch.device):
+    def to(self, device: torch.device, non_blocking: bool = False):
         """Method to move all (nested) tensors of the batch to a specific device.
         This operation doest not change the original batch element and returns a new Batch instance.
         """
-        self.sender_input = move_to(self.sender_input, device)
-        self.labels = move_to(self.labels, device)
-        self.receiver_input = move_to(self.receiver_input, device)
-        self.aux_input = move_to(self.aux_input, device)
+        self.sender_input = move_to(self.sender_input, device, non_blocking)
+        self.labels = move_to(self.labels, device, non_blocking)
+        self.receiver_input = move_to(self.receiver_input, device, non_blocking)
+        self.aux_input = move_to(self.aux_input, device, non_blocking)
         return self
