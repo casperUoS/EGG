@@ -66,6 +66,7 @@ def parse_arguments():
     parser.add_argument("--dataset", default="imageNet", help="choose dataset")
     parser.add_argument("--loss", default="hinge", help="chose loss function")
     parser.add_argument("--vision_name", default="resnet", help="choose the name of the pretrained vision model")
+    parser.add_argument("--sketch_samples", default=1, help="number of smaples of sketches per batch, resamples from distribution")
     opt = core.init(parser)
     assert opt.game_size >= 1
 
@@ -105,17 +106,16 @@ def get_beta(epoch, warmup_epochs=10, ramp_epochs=20, beta_max=1e-3):
 def get_game(config):
     if config['mode'] == "ds":
 
-        sketch_decoder = DiffDecoder()
+        sketch_decoder = DiffDecoder(zdim=config["sender_z_dim"])
     else:
         sketch_decoder = None #Temp line
 
-    sketch_encoder = SketchEncoder(embedding_size=config["z_dim"])
+    sketch_encoder = SketchEncoder(embedding_size=config["reciever_z_dim"])
     vision_encoder = VisionEncoder(
         feat_size=config["feat_size"],
-        hidden_size=config["sender_emb_size"],
+        hidden_size=config["emb_size"],
         vision_path=opts.vision_root,
         num_classes=config["num_classes"],
-        z_dim=config["z_dim"],
         model_name=config["vision_name"]
     )
 
@@ -154,14 +154,17 @@ if __name__ == "__main__":
         "same_vision_model": False,
         "mode": opts.mode,
         "diff_class": opts.diff_class if not None else False,
-        "sender_emb_size": 512,  # originally 512, maybe go back to this
-        "z_dim": 20,
+        "emb_size": 512,  # originally 512, maybe go back to this
+        "sender_z_dim": 64,
+        "reciever_z_dim": 64,
         "feat_size": 2048,
         "n_strokes": opts.n_strokes,
         "pop_size": opts.pop_size,
         "dataset": opts.dataset,
         "loss": opts.loss,
-        "vision_name": opts.vision_name
+        "vision_name": opts.vision_name,
+        "isOptimized": True,
+        "sketch_samples": opts.sketch_samples,
     }
 
     if config['vision_name'] == 'dino':
@@ -282,7 +285,8 @@ if __name__ == "__main__":
             run=run,
             vision_path=opts.vision_root,
             device=device,
-            game_size=config['game_size']
+            game_size=config['game_size'],
+            isOptimized=config['isOptimized'],
         )
 
         trainer.train(n_epochs=config['epochs'])

@@ -10,10 +10,14 @@ from egg.core import LoggingStrategy
 
 
 class SenderWrapper(nn.Module):
-    def __init__(self, vision_encoder, sketch_decoder):
+    def __init__(self, vision_encoder, sketch_decoder, hidden_size, z_dim, samples=1):
         super().__init__()
-        self.vision_encoder = vision_encoder
+        self. vision_encoder = vision_encoder
         self.sketch_decoder = sketch_decoder
+        self.samples = samples
+
+        self.fc_mu = nn.Linear(hidden_size, z_dim, bias=True)
+        self.fc_logvar = nn.Linear(hidden_size, z_dim, bias=True)
 
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
@@ -21,11 +25,16 @@ class SenderWrapper(nn.Module):
         return mu + std*eps, std
 
     def forward(self, x):
-        mu, logvar, vision_aux = self.vision_encoder(x)
+        x, vision_aux = self.vision_encoder(x)
+        logvar = self.fc_logvar(x)
+        mu = self.fc_mu(x)
         z, _std = self.reparameterize(mu, logvar)
+        if self.samples > 1:
+            z = z.repeat(self.samples) #portentially do torch.interleave
         output, sketch_enc_aux = self.sketch_decoder(z)
         output = output.unsqueeze(1)
-        sender_aux = (sketch_enc_aux | vision_aux)
+        sender_aux = (sketch_enc_aux | vision_aux) 
+            
         sender_aux['mu'] = mu
         sender_aux['log_var'] = logvar
 
@@ -33,18 +42,24 @@ class SenderWrapper(nn.Module):
 
 
 class ReceiverWrapper(nn.Module):
-    def __init__(self, vision_encoder, sketch_encoder, config):
+    def __init__(self, vision_encoder, sketch_encoder, config, hidden_size=128):
         super().__init__()
         self.sketch_encoder = sketch_encoder
         self.vision_encoder = vision_encoder
         self.game_size = config["game_size"]
+        self.isOptimized = config["isOptimized"]
+
+        self.mlp = nn.Sequential(
+            nn.Linear(config["emb_size"], hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, config["reciever_z_dim"]))
 
         # self.vis_rep = nn.Sequential(nn.SELU(), nn.Linear(config["sender_emb_size"], config["sketch_emb_size"]))
 
-    def reparameterize(self, mu, logvar):
-        std = torch.exp(0.5*logvar)
-        eps = torch.randn_like(logvar)
-        return mu + std*eps, std
+    # def reparameterize(self, mu, logvar):
+    #     std = torch.exp(0.5*logvar)
+    #     eps = torch.randn_like(logvar)
+    #     return mu + std*eps, std
 
     def return_embeddings(self, x):
         # embed each image (left or right)
@@ -52,7 +67,8 @@ class ReceiverWrapper(nn.Module):
         embs = []
         for i in range(self.game_size):
             h = x[i]
-            h, _logvar, _ = self.vision_encoder(h)
+            h, _ = self.vision_encoder(h)
+            h = self.mlp(h)
             if len(h.size()) == 3:
                 h = h.squeeze(dim=-1)
             # h_i are batch_size x embedding_size
@@ -62,8 +78,31 @@ class ReceiverWrapper(nn.Module):
         h = torch.cat(embs, dim=1)
         return h
 
+    def return_embeddings_optimized(self,x):
+        x = x.squeeze(2)
+        batch_size, game_size = x.shape[:2]
+        x_flat = x.flatten(start_dim=0, end_dim=1)
+        h, _= self.vision_encoder(x_flat)
+        h = self.mlp(h)
+        h = h.reshape(batch_size, game_size, -1)
+
+        h = torch.roll(h, -1,0)
+        h_all = []
+        for i in range(self.game_size):
+            h_i = torch.roll(h, -i,0) #x,y,emb
+            h_i = torch.flatten(h_i, start_dim=0, end_dim=1).squeeze()
+            h_all.append(h_i)
+
+        out = torch.stack(h_all, dim=1)
+        return out
+
+        #to make it fit nicely, we would want batch_size x game_size x embedding_size 
+
     def forward(self, signal, x):
-        emb = self.return_embeddings(x)
+        if self.isOptimized:
+            emb = self.return_embeddings_optimized(x)
+        else:
+            emb = self.return_embeddings(x)
 
         h_s, _sk_enc_aux = self.sketch_encoder(signal)
         # embd_s is of size batch_size x embedding_size
@@ -71,6 +110,8 @@ class ReceiverWrapper(nn.Module):
         # h_s is of size batch_size x 1 x embedding_size
         h_s = h_s.transpose(1, 2)
         # h_s is of size batch_size x embedding_size x 1
+        print("emb size:", emb.shape, flush=True)
+        print("h_s size:", h_s.shape, flush=True)
         out = torch.bmm(emb, h_s)
         # out is of size batch_size x game_size x 1
         out = out.squeeze(dim=-1)
@@ -85,16 +126,15 @@ class ReceiverWrapper(nn.Module):
         return log_probs, auxdata
 
 
+
 class AgentWrapper(nn.Module):
     def __init__(self, sketch_encoder, vision_encoder, sketch_decoder, config):
         super().__init__()
-        self.sketch_encoder = sketch_encoder
-        self.vision_encoder = vision_encoder
-        self.sketch_decoder = sketch_decoder
-
         self.sender = SenderWrapper(
             vision_encoder,
             sketch_decoder,
+            config["emb_size"],
+            config["sender_z_dim"]
         )
         self.receiver = ReceiverWrapper(vision_encoder, sketch_encoder, config)
 
@@ -149,6 +189,7 @@ class PopulationDiffGame(nn.Module):
             train_logging_strategy = None,
             test_logging_strategy = None,
             max_rotation = 30.0,
+            isOptimized = True,
     ):
         """
         :param sender: Sender agent. sender.forward() has to output log-probabilities over the vocabulary.
@@ -185,6 +226,7 @@ class PopulationDiffGame(nn.Module):
             if test_logging_strategy is None
             else test_logging_strategy
         )
+        self.isOptimized = isOptimized
 
     # def rotate_message(self, message):
     #     batch_size = message.size(0)
@@ -213,7 +255,29 @@ class PopulationDiffGame(nn.Module):
     #     )
         
 
-    def forward(self, sender_input, label, receiver_input=None, aux_input=None, epoch=0):
+    # def forward(self, sender_input, label, receiver_input=None, aux_input=None, epoch=0):
+    #     if self.isOptimized:
+    #         self.forward_optimized(sender_input, receiver_input, aux_input, epoch)
+    #     else:
+    #         self.forward_normal(sender_input, label, receiver_input, aux_input, epoch)
+
+    # def forward_optimized(self, sender_input, receiver_input, aux_input, epoch): #actually might not need to have a seperate optimized forward
+    #     sender, receiver = self.population.get_pair()
+    #     message, sender_aux = sender(sender_input, mode="s")
+    #     angle = torch.empty(1, device=message.device).uniform_(-15, 15).item()
+    #     if self.training:
+    #         message = rotate(
+    #             message,
+    #             angle=angle,
+    #             interpolation=InterpolationMode.BILINEAR,
+    #         )
+        
+
+    # # def get_sender(self):
+    # #     return self.sender
+
+    def forward(self, sender_input, label, receiver_input, aux_input, epoch):
+        print("reciever_input shpae:", receiver_input.shape, flush=True)
         sender, receiver = self.population.get_pair()
         message, sender_aux = sender(sender_input, mode="s")
         angle = torch.empty(1, device=message.device).uniform_(-15, 15).item()
@@ -250,9 +314,5 @@ class PopulationDiffGame(nn.Module):
         )
 
         return loss.mean(), interaction
-
-    # def get_sender(self):
-    #     return self.sender
-
-
+    
 

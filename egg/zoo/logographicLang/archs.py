@@ -18,14 +18,11 @@ class DinoClassifier(nn.Module):
        x = self.classifier(x)
        return x
 
-
 class VisionEncoder(nn.Module):
-
-    def __init__(self, feat_size, vision_path, hidden_size, num_classes, z_dim=20, num_splines=3,
+    def __init__(self, feat_size, vision_path, hidden_size, num_classes, num_splines=3,
                  critic_mode=False, model_name="resnet", *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.feat_size = feat_size
-        self.hidden_size = hidden_size
 
         REPO_DIR = "/home/cd6g22/EGG/dinov3"
 
@@ -59,9 +56,6 @@ class VisionEncoder(nn.Module):
         )
         self.batch_norm = nn.BatchNorm1d(backbone_features)
 
-        self.fc_mu = nn.Linear(hidden_size, z_dim, bias=True)
-        self.fc_logvar = nn.Linear(hidden_size, z_dim, bias=True)
-
         self.signal_game = True
 
         self.dropout = nn.Dropout(p=0.4)
@@ -86,17 +80,52 @@ class VisionEncoder(nn.Module):
         x = self.dropout(x)
         x = self.lin1(x)
 
-        logvar = self.fc_logvar(x)
-        mu = self.fc_mu(x)
-
         auxdata = {
-            "mu": mu,
-            "logvar": logvar,
             "embeds": embeds,
             "vgg_features": None
         }
 
-        return mu, logvar, auxdata
+        return x, auxdata
+    
+# class RecieverVisionEncoder(nn.Module):
+#     def __init__(self, feat_size, vision_path, hidden_size, num_classes, z_dim=20, num_splines=3,
+#                  critic_mode=False, model_name="resnet", *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.feat_size = feat_size
+#         self.hidden_size = hidden_size
+
+#         REPO_DIR = "/home/cd6g22/EGG/dinov3"
+
+#         if model_name == "dino":
+#             dinov3 = torch.hub.load(REPO_DIR, 'dinov3_vitb16', source='local')
+#             dino_clas = DinoClassifier(dinov3, num_classes)
+#             state_dict = torch.load(vision_path)
+#             dino_clas.load_state_dict(state_dict)
+#             num_features = dino_clas.classifier.in_features
+#             self.vision = dino_clas
+#         else:
+
+#             model = models.resnet50()
+#             num_features = model.fc.in_features
+#             model.fc = nn.Linear(num_features, num_classes)
+
+#             state_dict = torch.load(vision_path, weights_only=True)
+#             model.load_state_dict(state_dict)
+#             self.vision = model
+        
+#         modules=list(self.vision.children())[:-1]
+#         self.vision = nn.Sequential(*modules)
+#         backbone_features = num_features
+
+#         for param in self.vision.parameters():
+#             param.requires_grad = False
+#         self.vision.eval()
+
+#     def train(self, mode=True):
+#         super().train(mode)
+#         self.vision.eval()  # always keep vision_model in eval mode
+
+#         return self
 
 class DiffDecoder(nn.Module):
 
@@ -213,7 +242,7 @@ class DiffDecoder(nn.Module):
         return output, aux
 
 class SketchEncoder(nn.Module):
-    def __init__(self, dropout_rate=0.4, action_dim=2, embedding_size=50, freeze_vgg=True):
+    def __init__(self, dropout_rate=0.4, action_dim=2, embedding_size=20, freeze_vgg=True):
         super().__init__()
 
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(3, 3), stride=(1, 1), bias=True)

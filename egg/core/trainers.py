@@ -84,6 +84,7 @@ class Trainer:
         run = None,
         vision_path = "",
         game_size = 5,
+        isOptimized = True,
     ):
         """
         :param game: A nn.Module that implements forward(); it is expected that forward returns a tuple of (loss, d),
@@ -117,6 +118,7 @@ class Trainer:
         self.vision_path = vision_path
         self.full_interaction = None
         self.game_size = game_size
+        self.isOptimized = isOptimized
 
         if common_opts.load_from_checkpoint is not None:
             print(
@@ -436,6 +438,7 @@ class Trainer:
         image_grid = torch.stack(
             [group[:shortest_length].unsqueeze(1) for group in label_groups]
         )
+        image_grid = image_grid.transpose(0, 1)
         image_grid = image_grid.flatten(start_dim=0, end_dim=1).squeeze()
 
         usable_length = (image_grid.size(0) // self.game_size) * self.game_size
@@ -461,6 +464,37 @@ class Trainer:
         targets = torch.argmin(perms, dim=1)
         return Batch(sender_images, targets, receiver_images, {})
 
+
+    def _optimized_logographic_batch(self,batch):
+        images, labels = batch[:2]
+        label_order = torch.unique(labels)
+        label_groups = [images[labels == label] for label in label_order]
+        shortest_length = min(map(len, label_groups))
+        image_grid = torch.stack(
+            [group[:shortest_length].unsqueeze(1) for group in label_groups]
+        )
+        # image_grid = image_grid.flatten(start_dim=0, end_dim=1).squeeze()
+
+        # usable_length = (image_grid.size(0) // self.game_size) * self.game_size
+        # image_grid = image_grid[:usable_length]
+
+        perms = torch.randperm(label_order.shape[0], device=image_grid.device)
+        image_grid = image_grid[perms]
+        image_grid = image_grid.transpose(0, 1)
+
+        # sender_images = image_grid[::2]
+        # sender_images = sender_images.flatten(start_dim=0, end_dim=1).squeeze()
+
+        # image_grid = image_grid[1:]
+        # receiver_images = image_grid[:2]
+        # receiver_images = receiver_images.flatten(start_dim=0, end_dim=1).squeeze()
+
+        sender_images = image_grid.flatten(start_dim=0, end_dim=1).squeeze()
+        receiver_images = image_grid
+
+        return Batch(sender_images, None, receiver_images, {})
+        
+
     def train_epoch(self, epoch):
         mean_loss = 0
         n_batches = 0
@@ -472,8 +506,10 @@ class Trainer:
 
         for batch_id, batch in enumerate(self.train_data):
 
-            batch = self._prepare_logographic_batch(batch)
-
+            if self.isOptimized:
+                batch = self._optimized_logographic_batch(batch)
+            else:
+                batch = self._prepare_logographic_batch(batch)
 
             if not isinstance(batch, Batch):
                 batch = Batch(*batch)
