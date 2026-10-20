@@ -93,7 +93,10 @@ class ReceiverWrapper(nn.Module):
             h_i = torch.flatten(h_i, start_dim=0, end_dim=1).squeeze()
             h_all.append(h_i)
 
+        shuffle = [torch.randperm(self.config['game_size']) for _ in range(batch_size)]
+
         out = torch.stack(h_all, dim=1)
+        out = out[:,shuffle,:]
         return out
 
         #to make it fit nicely, we would want batch_size x game_size x embedding_size 
