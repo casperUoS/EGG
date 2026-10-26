@@ -123,11 +123,11 @@ def get_game(config):
     population = Population()
     population.generate_population(agent,config["pop_size"])
     if config['loss'] == "hinge":
-        game = PopulationDiffGame(population,loss_hinge)
+        game = PopulationDiffGame(population,loss_hinge, config)
     elif config['loss'] == "vae":
-        game = PopulationDiffGame(population,elbo_loss)
+        game = PopulationDiffGame(population,elbo_loss, config)
     else:
-        game = PopulationDiffGame(population,loss_hinge)
+        game = PopulationDiffGame(population,loss_hinge, config)
 
     return game
 
@@ -154,16 +154,16 @@ if __name__ == "__main__":
         "same_vision_model": False,
         "mode": opts.mode,
         "diff_class": opts.diff_class if not None else False,
-        "emb_size": 512,  # originally 512, maybe go back to this
-        "sender_z_dim": 64,
-        "reciever_z_dim": 64,
+        "emb_size": 128,  # originally 512, maybe go back to this
+        "sender_z_dim": 32,
+        "reciever_z_dim": 32,
         "feat_size": 2048,
         "n_strokes": opts.n_strokes,
         "pop_size": opts.pop_size,
         "dataset": opts.dataset,
         "loss": opts.loss,
         "vision_name": opts.vision_name,
-        "isOptimized": True,
+        "isOptimized": False,
         "sketch_samples": opts.sketch_samples,
     }
 

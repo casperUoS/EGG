@@ -223,7 +223,11 @@ class Trainer:
             with torch.no_grad():
                 for batch in validation_data:
                     if not isinstance(batch, Batch):
-                        batch = self._prepare_logographic_batch(batch)
+
+                        if self.isOptimized:
+                            batch = self._optimized_logographic_batch(batch)
+                        else:
+                            batch = self._prepare_logographic_batch(batch)
                     batch = batch.to(self.device, non_blocking=True)
                     with record_function('model_inference') if is_profile else nullcontext():
                         optimized_loss, interaction = self.game(*batch, epoch=0)

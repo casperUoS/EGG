@@ -80,30 +80,39 @@ class ReceiverWrapper(nn.Module):
 
     def return_embeddings_optimized(self,x):
         x = x.squeeze(2)
-        batch_size, game_size = x.shape[:2]
+        b_1, b_2 = x.shape[:2]
+        batch_size = b_1 * b_2 
+        # print("batch size", batch_size, flush=True)
+        # print("game_size", self.game_size, flush=True)
         x_flat = x.flatten(start_dim=0, end_dim=1)
         h, _= self.vision_encoder(x_flat)
         h = self.mlp(h)
-        h = h.reshape(batch_size, game_size, -1)
+        h = h.reshape(b_1, b_2, -1)
 
         h = torch.roll(h, -1,0)
         h_all = []
         for i in range(self.game_size):
-            h_i = torch.roll(h, -i,0) #x,y,emb
+            h_i = torch.roll(h, -i,1) #x,y,emb
             h_i = torch.flatten(h_i, start_dim=0, end_dim=1).squeeze()
             h_all.append(h_i)
 
-        shuffle = [torch.randperm(self.config['game_size']) for _ in range(batch_size)]
+        out = torch.stack(h_all, dim=1) #shape: ((50*4), 5, E)
+        shuffle = torch.stack(
+            [torch.randperm(self.game_size, device=out.device) for _ in range(batch_size)]
+        )
+        # print("shuffle", shuffle.shape, flush=True)
+        out = out.gather(1, shuffle.unsqueeze(-1).repeat(1,1,out.shape[-1]))
 
-        out = torch.stack(h_all, dim=1)
-        out = out[:,shuffle,:]
-        return out
+        labels = shuffle.argmin(dim=1)
+        return out, labels
 
         #to make it fit nicely, we would want batch_size x game_size x embedding_size 
 
     def forward(self, signal, x):
+        auxdata = {}
         if self.isOptimized:
-            emb = self.return_embeddings_optimized(x)
+            emb, labels = self.return_embeddings_optimized(x)
+            auxdata["labels"] = labels
         else:
             emb = self.return_embeddings(x)
 
@@ -113,18 +122,15 @@ class ReceiverWrapper(nn.Module):
         # h_s is of size batch_size x 1 x embedding_size
         h_s = h_s.transpose(1, 2)
         # h_s is of size batch_size x embedding_size x 1
-        print("emb size:", emb.shape, flush=True)
-        print("h_s size:", h_s.shape, flush=True)
+        # print("emb size:", emb.shape, flush=True)
+        # print("h_s size:", h_s.shape, flush=True)
         out = torch.bmm(emb, h_s)
         # out is of size batch_size x game_size x 1
         out = out.squeeze(dim=-1)
         # out is of size batch_size x game_size
 
         log_probs = F.log_softmax(out, dim=1)
-
-        auxdata = {
-            "receiver_features": h_s,
-        }
+        auxdata["receiver_features"] = h_s
 
         return log_probs, auxdata
 
@@ -189,10 +195,10 @@ class PopulationDiffGame(nn.Module):
             self,
             population,
             loss,
+            config,
             train_logging_strategy = None,
             test_logging_strategy = None,
             max_rotation = 30.0,
-            isOptimized = True,
     ):
         """
         :param sender: Sender agent. sender.forward() has to output log-probabilities over the vocabulary.
@@ -225,11 +231,19 @@ class PopulationDiffGame(nn.Module):
             else train_logging_strategy
         )
         self.test_logging_strategy = (
-            LoggingStrategy()
+            LoggingStrategy( #TODO this needs to be changed so that we can actually anylise results, this would involve putting the results into a fixed torch.zeros_lik(50 ...)
+                store_sender_input=False,
+                store_receiver_input=False,
+                store_message=False,
+                store_receiver_output=False,
+                store_sender_output=False,
+                store_vgg_features=False,
+                store_receiver_features=False,
+            )
             if test_logging_strategy is None
             else test_logging_strategy
         )
-        self.isOptimized = isOptimized
+        self.isOptimized = config["isOptimized"]
 
     # def rotate_message(self, message):
     #     batch_size = message.size(0)
@@ -279,23 +293,30 @@ class PopulationDiffGame(nn.Module):
     # # def get_sender(self):
     # #     return self.sender
 
-    def forward(self, sender_input, label, receiver_input, aux_input, epoch):
-        print("reciever_input shpae:", receiver_input.shape, flush=True)
+    def forward(self, sender_input, labels, receiver_input, aux_input, epoch):
+        # print("reciever_input shpae:", receiver_input.shape, flush=True)
         sender, receiver = self.population.get_pair()
         message, sender_aux = sender(sender_input, mode="s")
         angle = torch.empty(1, device=message.device).uniform_(-15, 15).item()
-        if self.training:
-            message = rotate(
-                message,
-                angle=angle,
-                interpolation=InterpolationMode.BILINEAR,
-            )
+        # if self.training:
+        #     message = rotate(
+        #         message,
+        #         angle=angle,
+        #         interpolation=InterpolationMode.BILINEAR,
+        #     )
+        message = rotate(
+            message,
+            angle=angle,
+            interpolation=InterpolationMode.BILINEAR,
+        )
         receiver_output, receiver_aux = receiver(
             message, receiver_input, mode="r"
         )
+        if self.isOptimized:
+            labels = receiver_aux["labels"]
 
         loss, aux_info = self.loss(
-            receiver_output, label, sender_aux['mu'], sender_aux['log_var'], epoch=epoch,
+            receiver_output, labels, sender_aux['mu'], sender_aux['log_var'], epoch=epoch,
         )
 
         logging_strategy = (
@@ -308,7 +329,7 @@ class PopulationDiffGame(nn.Module):
             vgg_features=sender_aux["vgg_features"],
             receiver_features=receiver_aux["receiver_features"],
             receiver_input=receiver_input,
-            labels=label,
+            labels=labels,
             aux_input=aux_input,
             receiver_output=receiver_output.detach(),
             message=message.detach(),

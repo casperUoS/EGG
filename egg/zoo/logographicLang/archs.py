@@ -54,7 +54,7 @@ class VisionEncoder(nn.Module):
         self.lin1 = nn.Sequential(
             nn.Linear(backbone_features, hidden_size, bias=True), nn.SELU()
         )
-        self.batch_norm = nn.BatchNorm1d(backbone_features)
+        self.layer_norm = nn.LayerNorm(backbone_features)
 
         self.signal_game = True
 
@@ -76,8 +76,7 @@ class VisionEncoder(nn.Module):
 
         embeds = self.vision(x)
         x = embeds.view(embeds.size(0), -1)
-        x = self.batch_norm(x)
-        x = self.dropout(x)
+        x = self.layer_norm(x)
         x = self.lin1(x)
 
         auxdata = {
