@@ -54,6 +54,8 @@ class ReceiverWrapper(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_size, config["reciever_z_dim"]))
 
+        self.lin1 = nn.Linear(config["emb_size"], config["reciever_z_dim"])
+
         # self.vis_rep = nn.Sequential(nn.SELU(), nn.Linear(config["sender_emb_size"], config["sketch_emb_size"]))
 
     # def reparameterize(self, mu, logvar):
@@ -68,7 +70,7 @@ class ReceiverWrapper(nn.Module):
         for i in range(self.game_size):
             h = x[i]
             h, _ = self.vision_encoder(h)
-            h = self.mlp(h)
+            h = self.lin1(h)
             if len(h.size()) == 3:
                 h = h.squeeze(dim=-1)
             # h_i are batch_size x embedding_size

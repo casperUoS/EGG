@@ -154,7 +154,7 @@ if __name__ == "__main__":
         "same_vision_model": False,
         "mode": opts.mode,
         "diff_class": opts.diff_class if not None else False,
-        "emb_size": 128,  # originally 512, maybe go back to this
+        "emb_size": 256,  # originally 512, maybe go back to this
         "sender_z_dim": 32,
         "reciever_z_dim": 32,
         "feat_size": 2048,
