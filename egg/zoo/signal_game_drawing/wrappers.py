@@ -112,6 +112,7 @@ class DiffRasterWrapper(nn.Module):
             # Torch format, discard alpha, make gray
             out = out.permute(2, 0, 1).view(
                 4, self.imsize, self.imsize)[:3].mean(0, keepdim=True)
+            out = 1.0 - out
 
             outputs.append(out)
 

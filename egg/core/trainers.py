@@ -302,6 +302,10 @@ class Trainer:
         vgg = models.vgg16(pretrained=False)
         vgg.load_state_dict(torch.load("data/vgg16_pretrained.pth"))
 
+        vgg.features.eval()
+        vgg.classifier[:-1].eval()
+        vgg.classifier[-1].train()
+
         vgg.classifier[-1] = nn.Linear(vgg.classifier[-1].in_features, 10)
 
         for param in vgg.features.parameters():
