@@ -437,17 +437,27 @@ class Trainer:
     def _prepare_logographic_batch(self, batch):
         images, labels = batch[:2]
         label_order = torch.unique(labels)
-        label_groups = [images[labels == label] for label in label_order]
-        shortest_length = min(map(len, label_groups))
-        image_grid = torch.stack(
-            [group[:shortest_length].unsqueeze(1) for group in label_groups]
-        )
-        image_grid = image_grid.transpose(0, 1)
-        image_grid = image_grid.flatten(start_dim=0, end_dim=1).squeeze()
+        def arrange_for_sender(x):
 
-        usable_length = (image_grid.size(0) // self.game_size) * self.game_size
-        image_grid = image_grid[:usable_length]
+            label_groups = [x[labels == label] for label in label_order]
+            shortest_length = min(map(len, label_groups))
+            x_grid = torch.stack(
+                [group[:shortest_length].unsqueeze(1) for group in label_groups]
+            )
+            
+            x_grid = x_grid.transpose(0, 1)
+            x_grid = x_grid.flatten(start_dim=0, end_dim=1).squeeze()
+
+            usable_length = (x_grid.size(0) // self.game_size) * self.game_size
+            x_grid = x_grid[:usable_length]
+            
+            return x_grid
+
+        image_grid = arrange_for_sender(images)
+        label_grid = arrange_for_sender(labels)
+
         sender_images = image_grid[::self.game_size]
+        
         receiver_images = image_grid.reshape(
             -1, self.game_size, *image_grid.shape[1:]
         )
@@ -466,7 +476,7 @@ class Trainer:
             perms[:, :, None, None, None].expand_as(receiver_images),
         )
         targets = torch.argmin(perms, dim=1)
-        return Batch(sender_images, targets, receiver_images, {})
+        return Batch(sender_images, label_grid, receiver_images, targets,{})
 
 
     def _optimized_logographic_batch(self,batch):
