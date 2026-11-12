@@ -8,14 +8,12 @@ from torchvision.transforms import v2
 from model_utilities.datasets import make_wids_sampler
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from torchvision.transforms.v2 import ToPILImage
 
 import wandb
 from egg import core
 from egg.zoo.logographicLang.archs import DiffDecoder, SketchEncoder, VisionEncoder
 from egg.zoo.logographicLang.features import (
     CIFAR10WithObj2ID,
-    ImageNet50WIDSFeat,
     ImagenetLoader,
 )
 from egg.zoo.logographicLang.wrappers import (
