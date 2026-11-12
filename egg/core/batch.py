@@ -17,11 +17,13 @@ class Batch:
         sender_input: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
         receiver_input: Optional[torch.Tensor] = None,
+        target_position: Optional[torch.Tensor] = None,
         aux_input: Optional[Dict[Any, Any]] = None,
     ):
         self.sender_input = sender_input
         self.labels = labels
         self.receiver_input = receiver_input
+        self.target_position = target_position
         self.aux_input = aux_input
 
     def __getitem__(self, idx):
@@ -47,6 +49,8 @@ class Batch:
         elif idx == 2:
             return self.receiver_input
         elif idx == 3:
+            return self.target_position
+        elif idx == 4:
             return self.aux_input
         else:
             raise IndexError("Trying to access a wrong index in the batch")
@@ -66,7 +70,7 @@ class Batch:
         True
         """
         return iter(
-            [self.sender_input, self.labels, self.receiver_input, self.aux_input]
+            [self.sender_input, self.labels, self.receiver_input, self.target_position, self.aux_input]
         )
 
     def to(self, device: torch.device, non_blocking: bool = False):
@@ -76,5 +80,6 @@ class Batch:
         self.sender_input = move_to(self.sender_input, device, non_blocking)
         self.labels = move_to(self.labels, device, non_blocking)
         self.receiver_input = move_to(self.receiver_input, device, non_blocking)
+        self.target_position = move_to(self.target_position, device, non_blocking)
         self.aux_input = move_to(self.aux_input, device, non_blocking)
         return self
