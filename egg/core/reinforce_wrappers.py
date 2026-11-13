@@ -302,6 +302,7 @@ class SymbolGameDrawReinforce(SymbolGameReinforce):
         )
         interaction = logging_strategy.filtered_interaction(
             sender_input=sender_input,
+            sender_entropy=sender_entropy,
             labels=sender_label,
             receiver_input=receiver_input,
             aux_input=aux_input,

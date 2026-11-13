@@ -15,6 +15,7 @@ from egg.core.batch import Batch
 @dataclass(repr=True, eq=True)
 class LoggingStrategy:
     store_sender_input: bool = True
+    store_sender_entropy: bool = True
     store_receiver_input: bool = True
     store_labels: bool = True
     store_aux_input: bool = True
@@ -29,6 +30,7 @@ class LoggingStrategy:
     def filtered_interaction(
         self,
         sender_input: Optional[torch.Tensor],
+        sender_entropy: Optional[torch.Tensor],
         receiver_input: Optional[torch.Tensor],
         labels: Optional[torch.Tensor],
         aux_input: Optional[Dict[str, torch.Tensor]],
@@ -44,6 +46,7 @@ class LoggingStrategy:
 
         return Interaction(
             sender_input=sender_input if self.store_sender_input else None,
+            sender_entropy=sender_entropy if self.store_sender_entropy else None,
             receiver_input=receiver_input if self.store_receiver_input else None,
             labels=labels if self.store_labels else None,
             aux_input=aux_input if self.store_aux_input else None,
@@ -71,6 +74,7 @@ class LoggingStrategy:
 class Interaction:
     # incoming data
     sender_input: Optional[torch.Tensor]
+    sender_entropy: Optional[torch.Tensor]
     receiver_input: Optional[torch.Tensor]
     labels: Optional[torch.Tensor]
     aux_input: Optional[Dict[str, torch.Tensor]]
@@ -128,6 +132,7 @@ class Interaction:
         interactions = [self, other]
         return Interaction(
             sender_input=_check_cat([x.sender_input for x in interactions]),
+            sender_entropy=_check_cat([x.sender_entropy for x in interactions]),
             receiver_input=_check_cat([x.receiver_input for x in interactions]),
             labels=_check_cat([x.labels for x in interactions]),
             aux_input=_combine_aux_dicts(self.aux_input, other.aux_input),
@@ -238,6 +243,7 @@ message=tensor([1., 1.]), receiver_output=tensor([1., 1.]), message_length=None,
 
         return Interaction(
             sender_input=_check_cat([x.sender_input for x in interactions], nonSingular=True if interactions[0].sender_input.ndim == 5 else False),
+            sender_entropy=_check_cat([x.sender_entropy for x in interactions]),
             receiver_input=_check_cat([x.receiver_input for x in interactions], nonSingular=True if interactions[0].sender_input.ndim == 5 else False),
             labels=_check_cat([x.labels for x in interactions]),
             aux_input=aux_input,

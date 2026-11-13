@@ -107,12 +107,79 @@ def loss_hinge(
     edge_coeff = 0.0001
     edge_loss = edge_penalty * edge_coeff
 
+    print("SDIFSDIFSDSDFSDFSDSD", labels.shape, flush=True)
+
     hinge_loss = F.multi_margin_loss(receiver_output, labels, reduction="none")
 
     total_loss = hinge_loss + edge_loss.mean()
 
     acc = (labels == receiver_output.argmax(dim=1)).float()
     return total_loss, {"acc": acc, "edge_penalty": edge_loss}
+
+def loss_hinge_KL(
+    _sender_input, message, _receiver_input,
+    receiver_output, labels, _aux_input
+):
+    """
+    Hinge loss with KL divergence regularisation.
+    Differentiable and compatible with GS and REINFORCE.
+    """
+
+    # Edge penalty
+    top_edge = message[:, 0, :].sum(dim=1)
+    bottom_edge = message[:, -1, :].sum(dim=1)
+    left_edge = message[:, :, 0].sum(dim=1)
+    right_edge = message[:, :, -1].sum(dim=1)
+
+    edge_penalty = (
+        top_edge + bottom_edge + left_edge + right_edge
+    )
+
+    edge_coeff = 0.0001
+    edge_loss = edge_penalty * edge_coeff
+
+    # Hinge loss
+    hinge_loss = F.multi_margin_loss(
+        receiver_output,
+        labels.long(),
+        reduction="none"
+    )
+
+    # KL divergence regularisation
+    kl_coeff = 0.001
+
+    log_probs = F.log_softmax(receiver_output, dim=1)
+
+    num_classes = receiver_output.shape[1]
+
+    uniform_prior = torch.full_like(
+        receiver_output,
+        1.0 / num_classes
+    )
+
+    kl_loss = F.kl_div(
+        log_probs,
+        uniform_prior,
+        reduction="none"
+    ).sum(dim=1)
+
+    # Combined loss
+    total_loss = (
+        hinge_loss
+        + edge_loss
+        + kl_coeff * kl_loss
+    )
+
+    # Accuracy
+    acc = (
+        labels == receiver_output.argmax(dim=1)
+    ).float()
+
+    return total_loss, {
+        "acc": acc,
+        "edge_penalty": edge_loss,
+        "kl_loss": kl_loss
+    }
 
 
 def get_game(config):
@@ -151,7 +218,7 @@ def get_game(config):
         game = core.SymbolGameDrawReinforce(
             sender,
             receiver,
-            loss,
+            loss_hinge,
             sender_entropy_coeff=config['sender_entropy_coeff'],
             receiver_entropy_coeff=config['receiver_entropy_coeff'],
         )
@@ -279,6 +346,8 @@ if __name__ == "__main__":
         # 1. Run inference on the validation set to get a batch of interactions
         print("Generating sample sketch...")
         val_loss, interaction = trainer.eval()
+
+        print("entropy stuff", interaction.sender_entropy.detach().cpu(), flush=True)
 
         symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
 
