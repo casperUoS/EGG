@@ -138,7 +138,8 @@ class DiffRasterWrapper(nn.Module):
         output, aux = self.decode(z)
 
         aux["sender_log_prob"] = logvar
-        aux["sender_entropy"] = std.mean()
+        aux["sender_mu"] = mu
+        aux["sender_entropy"] = std
         aux["vgg_features"] = vgg_feats
         return output, aux
 
