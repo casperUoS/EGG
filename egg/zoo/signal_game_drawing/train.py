@@ -605,65 +605,82 @@ if __name__ == "__main__":
 
 
         # Run t-SNE on referents
+        # print("Running t-SNE on referents...")
+        # tsne_refs = TSNE(n_components=2, random_state=42, perplexity=perplexity_refs)
+        # refs_2d_sub = tsne_refs.fit_transform(refs_flat_sub)
+        #
+        # # Run t-SNE on utterances
+        # print("Running t-SNE on utterances...")
+        # tsne_utts = TSNE(n_components=2, random_state=42, perplexity=perplexity_utts)
+        # utts_2d_sub = tsne_utts.fit_transform(utts_flat_sub)
+        #
+        # print("Running t-SNE on sender features...")
+        # tsne_refs_emb = TSNE(n_components=2, random_state=42, perplexity=perplexity_refs_emb)
+        # refs_emb_2d_sub = tsne_refs_emb.fit_transform(refs_emb_flat_sub)
+        #
+        # print("Running t-SNE on utterence embeddings...")
+        # tsne_utts_emb = TSNE(n_components=2, random_state=42, perplexity=perplexity_utts_emb)
+        # utts_emb_2d_sub = tsne_utts_emb.fit_transform(utts_emb_flat_sub)
+
         print("Running t-SNE on referents...")
-        tsne_refs = TSNE(n_components=2, random_state=42, perplexity=perplexity_refs)
-        refs_2d_sub = tsne_refs.fit_transform(refs_flat_sub)
+        pca_refs = TSNE(n_components=2, random_state=42, perplexity=perplexity_refs)
+        refs_2d_sub = pca_refs.fit_transform(refs_flat_sub)
 
         # Run t-SNE on utterances
         print("Running t-SNE on utterances...")
-        tsne_utts = TSNE(n_components=2, random_state=42, perplexity=perplexity_utts)
-        utts_2d_sub = tsne_utts.fit_transform(utts_flat_sub)
+        pca_utts = TSNE(n_components=2, random_state=42, perplexity=perplexity_utts)
+        utts_2d_sub = pca_utts.fit_transform(utts_flat_sub)
 
         print("Running t-SNE on sender features...")
-        tsne_refs_emb = TSNE(n_components=2, random_state=42, perplexity=perplexity_refs_emb)
-        refs_emb_2d_sub = tsne_refs_emb.fit_transform(refs_emb_flat_sub)
+        pca_refs_emb = TSNE(n_components=2, random_state=42, perplexity=perplexity_refs_emb)
+        refs_emb_2d_sub = pca_refs_emb.fit_transform(refs_emb_flat_sub)
 
         print("Running t-SNE on utterence embeddings...")
-        tsne_utts_emb = TSNE(n_components=2, random_state=42, perplexity=perplexity_utts_emb)
-        utts_emb_2d_sub = tsne_utts_emb.fit_transform(utts_emb_flat_sub)
+        pca_utts_emb = TSNE(n_components=2, random_state=42, perplexity=perplexity_utts_emb)
+        utts_emb_2d_sub = pca_utts_emb.fit_transform(utts_emb_flat_sub)
 
         cmap = plt.cm.get_cmap("tab10", len(class_names))
-        fig_tsne, axes_tsne = plt.subplots(2, 2, figsize=(14, 6), squeeze=False)
+        fig_map, axes_map = plt.subplots(2, 2, figsize=(14, 6), squeeze=False)
 
         for cls_idx, cls_name in enumerate(class_names):
             mask = (colors_sub == cls_idx)
-            axes_tsne[0][0].scatter(
+            axes_map[0][0].scatter(
                 refs_2d_sub[mask, 0], refs_2d_sub[mask, 1],
                 label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
             )
-            axes_tsne[0][1].scatter(
+            axes_map[0][1].scatter(
                 utts_2d_sub[mask, 0], utts_2d_sub[mask, 1],
                 label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
             )
-            axes_tsne[1][0].scatter(
+            axes_map[1][0].scatter(
                 refs_emb_2d_sub[mask, 0], refs_emb_2d_sub[mask, 1],
                 label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
             )
-            axes_tsne[1][1].scatter(
+            axes_map[1][1].scatter(
                 utts_emb_2d_sub[mask, 0], utts_emb_2d_sub[mask, 1],
                 label=cls_name, color=cmap(cls_idx), s=15, alpha=0.7
             )
 
 
-        axes_tsne[0][0].set_title("t-SNE: Referents (target images)")
-        axes_tsne[0][0].legend(markerscale=2, fontsize=8)
-        axes_tsne[0][0].axis("off")
+        axes_map[0][0].set_title("t-SNE: Referents (target images)")
+        axes_map[0][0].legend(markerscale=2, fontsize=8)
+        axes_map[0][0].axis("off")
 
-        axes_tsne[0][1].set_title("t-SNE: Utterances (sketches)")
-        axes_tsne[0][1].legend(markerscale=2, fontsize=8)
-        axes_tsne[0][1].axis("off")
+        axes_map[0][1].set_title("t-SNE: Utterances (sketches)")
+        axes_map[0][1].legend(markerscale=2, fontsize=8)
+        axes_map[0][1].axis("off")
 
-        axes_tsne[1][0].set_title("t-SNE: Referent Embeddings (Sender features features)")
-        axes_tsne[1][0].legend(markerscale=2, fontsize=8)
-        axes_tsne[1][0].axis("off")
+        axes_map[1][0].set_title("t-SNE: Referent Embeddings (Sender features features)")
+        axes_map[1][0].legend(markerscale=2, fontsize=8)
+        axes_map[1][0].axis("off")
 
-        axes_tsne[1][1].set_title("t-SNE: Utterances embeddings (Listener features)")
-        axes_tsne[1][1].legend(markerscale=2, fontsize=8)
-        axes_tsne[1][1].axis("off")
+        axes_map[1][1].set_title("t-SNE: Utterances embeddings (Listener features)")
+        axes_map[1][1].legend(markerscale=2, fontsize=8)
+        axes_map[1][1].axis("off")
 
         plt.tight_layout()
-        wandb.log({"tsne": wandb.Image(fig_tsne)})
-        plt.close(fig_tsne)
+        wandb.log({"tsne": wandb.Image(fig_map)})
+        plt.close(fig_map)
 
         plt.show()
 
