@@ -196,12 +196,13 @@ def loss_hinge_KL(
     logvar = aux["log_var"]
 
     kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    kl_coeff = 0.001
 
     # Combined loss
     total_loss = (
         hinge_loss
         + edge_loss
-        + kl_loss
+        + kl_loss * kl_coeff
     )
 
     # print("total_loss:",total_loss)
