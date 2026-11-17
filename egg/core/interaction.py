@@ -217,6 +217,8 @@ message=tensor([1., 1.]), receiver_output=tensor([1., 1.]), message_length=None,
                 )
             if nonSingular:
                 return torch.cat(lst, dim=1)
+            if lst[0].dim() == 0:
+                return torch.stack(lst, dim=0)
             return torch.cat(lst, dim=0)
 
         assert interactions, "interaction list must not be empty"

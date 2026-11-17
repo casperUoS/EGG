@@ -184,12 +184,12 @@ def loss_hinge_KL(
     edge_penalty = (top_edge + bottom_edge + left_edge + right_edge)
 
     edge_coeff = 0.0001
+    edge_penalty = edge_penalty.mean()
     edge_loss = edge_penalty * edge_coeff
 
     hinge_loss = F.multi_margin_loss(
         receiver_output,
         labels.long(),
-        reduction="none"
     )
 
     mu = aux["mu"]
@@ -204,13 +204,17 @@ def loss_hinge_KL(
         + kl_loss
     )
 
+    # print("total_loss:",total_loss)
+    # print("hinge_loss:",hinge_loss)
+    # print("kl_loss:",kl_loss)
+
     # Accuracy
     acc = (
         labels == receiver_output.argmax(dim=1)
     ).float()
 
     return total_loss, {
-        "acc": acc,
+        "acc": acc.mean(),
         "edge_penalty": edge_loss,
         "kl_loss": kl_loss
     }
