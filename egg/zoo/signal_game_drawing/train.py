@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
 from torchvision.transforms.v2 import ToPILImage
+import matplotlib.pyplot as plt
 
 import egg.core as core
 from egg.core.reinforce_wrappers import PPOWrapper
@@ -431,21 +432,21 @@ if __name__ == "__main__":
 
         trainer.train(n_epochs=config['epochs'])
 
+        class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+
         # 1. Run inference on the validation set to get a batch of interactions
         print("Generating sample sketch...")
         val_loss, interaction = trainer.eval()
 
-        print("entropy stuff", interaction.sender_entropy.detach().cpu(), flush=True)
-
-        symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
-
-        print("Symbolicity score:", symbolicity_loss)
-        print("Symbolicity accuracy:", symbolicity_acc)
-        print("Semanticity score:", semantic_cor)
-
-        wandb.log({"symbolicity_loss": symbolicity_loss})
-        wandb.log({"symbolicity_acc": symbolicity_acc})
-        wandb.log({"semantic_cor": semantic_cor})
+        # symbolicity_loss, symbolicity_acc, semantic_cor = trainer.symbolicity_eval(epochs=10)
+        #
+        # print("Symbolicity score:", symbolicity_loss)
+        # print("Symbolicity accuracy:", symbolicity_acc)
+        # print("Semanticity score:", semantic_cor)
+        #
+        # wandb.log({"symbolicity_loss": symbolicity_loss})
+        # wandb.log({"symbolicity_acc": symbolicity_acc})
+        # wandb.log({"semantic_cor": semantic_cor})
 
         for sample_mode in ["all","single","double"]:
 
@@ -455,8 +456,8 @@ if __name__ == "__main__":
             # receiver_input = interaction.receiver_input.detach().cpu()
             receiver_output = interaction.receiver_output.detach().cpu()
             labels = interaction.labels.detach().cpu()
-            edge_penalty = interaction.edge_penalty.detach().cpu() if not None else 0.0
-
+            # edge_penalty = interaction.edge_penalty.detach().cpu() if not None else 0.0
+            edge_penalty = 0.0
             # 3. Plot and save one sample
             import matplotlib.pyplot as plt
 
@@ -477,9 +478,6 @@ if __name__ == "__main__":
 
             # print("reciever_output=",receiver_output)
             # print("labels=",labels)
-
-            class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
-                           'dog', 'frog', 'horse', 'ship', 'truck']
 
             num_samples = min(32, sketches.size(0))
             max_rows = 8
@@ -506,7 +504,6 @@ if __name__ == "__main__":
                 single_class_idx = (labels == 0).nonzero(as_tuple=True)[0]
                 sketches = sketches[single_class_idx]
                 labels = labels[single_class_idx]
-                edge_penalty = edge_penalty[single_class_idx]
                 # edge_penalty = 0.0
                 if sender_input.ndim == 5:
                     sender_input = sender_input.index_select(dim=1, index=single_class_idx)
@@ -518,7 +515,6 @@ if __name__ == "__main__":
                 class2_idx = (labels == 6).nonzero(as_tuple=True)[0][0:(num_samples//2)]
                 sketches = torch.cat((sketches[class1_idx], sketches[class2_idx]))
                 labels = torch.cat([labels[class1_idx], labels[class2_idx]])
-                edge_penalty = torch.cat([edge_penalty[class1_idx], edge_penalty[class2_idx]])
                 # edge_penalty = 0.0
                 if sender_input.ndim == 5:
                     sender_input = torch.cat([sender_input.index_select(dim=1, index=class1_idx), sender_input.index_select(dim=1, index=class2_idx)], dim=1)
@@ -553,7 +549,6 @@ if __name__ == "__main__":
 
                 class_idx = labels[i].item()
                 class_name = class_names[class_idx]
-                edge_penalty_sample = edge_penalty[i]
                 # edge_penalty_sample = 0.0
 
                 # Calculate column indices for original and sketch
@@ -567,7 +562,7 @@ if __name__ == "__main__":
 
                 # Plot sketch
                 axes[row, sketch_col].imshow(sketch_sample, cmap='gray', origin='lower')
-                axes[row, sketch_col].set_title(f"Sketch: {class_name}, edge_penalty: {edge_penalty_sample}")
+                axes[row, sketch_col].set_title(f"Sketch: {class_name}")
                 axes[row, sketch_col].axis('off')
 
 
@@ -642,7 +637,7 @@ if __name__ == "__main__":
         perplexity_utts_emb = min(30, max(1, utts_emb_flat_sub.shape[0] - 1))
 
         # Subsample up to 20 points per class
-        # import numpy as np
+
         # max_per_class = 20
         # keep_idx = np.concatenate([
         #     np.where(colors == cls)[0][:max_per_class]

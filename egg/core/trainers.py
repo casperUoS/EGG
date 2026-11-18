@@ -315,7 +315,7 @@ class Trainer:
             param.requires_grad = False
 
         criterion = nn.CrossEntropyLoss()
-        optimizer = optim.SGD(vgg.parameters(), lr=0.0002, momentum=0.9)
+        optimizer = optim.SGD(vgg.parameters(), lr=0.001, momentum=0.9)
 
 
         for epoch in range(epochs):
