@@ -130,9 +130,9 @@ class DrawSenderDiff(nn.Module):
         # embeds = x
         # x = self.bn1(x)
         # x = self.lin2(x)
-        logvar = self.logvar_predictor(x)
+        # logvar = self.logvar_predictor(x)
         mu = self.mu_predictor(x)
-        return mu, logvar, embeds
+        return mu, embeds
 
 class DrawReceiver(nn.Module):
     def __init__(self,

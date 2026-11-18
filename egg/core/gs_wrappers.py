@@ -180,23 +180,23 @@ class SymbolGameGS(nn.Module):
         receiver_output, receiver_emb = self.receiver(message, receiver_input, aux_input)
 
         loss_aux = {}
-        loss_aux["log_var"] = sender_aux["sender_log_prob"]
-        loss_aux["mu"] = sender_aux["sender_mu"]
+        # loss_aux["log_var"] = sender_aux["sender_log_prob"]
+        # loss_aux["mu"] = sender_aux["sender_mu"]
 
 
         loss, aux_info = self.loss(
             sender_input, message, receiver_input, receiver_output, target_position, loss_aux
         )
 
-        aux_info["sender_log_prob"] = sender_aux["sender_log_prob"]
-        aux_info["sender_mu"] = sender_aux["sender_mu"]
+        # aux_info["sender_log_prob"] = sender_aux["sender_log_prob"]
+        # aux_info["sender_mu"] = sender_aux["sender_mu"]
 
         logging_strategy = (
             self.train_logging_strategy if self.training else self.test_logging_strategy
         )
         interaction = logging_strategy.filtered_interaction(
             sender_input=sender_input,
-            sender_entropy=sender_aux["sender_log_prob"],
+            sender_entropy=None,
             sender_output=message,
             edge_penalty=aux_info["edge_penalty"],
             vgg_features=sender_aux["vgg_features"],
