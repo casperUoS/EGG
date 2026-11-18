@@ -198,7 +198,7 @@ class SymbolGameGS(nn.Module):
             sender_input=sender_input,
             sender_entropy=None,
             sender_output=message,
-            edge_penalty=aux_info["edge_penalty"],
+            edge_penalty=None,
             vgg_features=sender_aux["vgg_features"],
             receiver_features=receiver_emb,
             receiver_input=receiver_input,
