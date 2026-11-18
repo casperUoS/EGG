@@ -196,7 +196,56 @@ def loss_hinge_KL(
     logvar = aux["log_var"]
 
     kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-    kl_coeff = 0.001
+    kl_coeff = 1
+
+    # Combined loss
+    total_loss = (
+        hinge_loss
+        + edge_loss
+        + kl_loss * kl_coeff
+    )
+
+    # print("total_loss:",total_loss)
+    # print("hinge_loss:",hinge_loss)
+    # print("kl_loss:",kl_loss)
+
+    # Accuracy
+    acc = (
+        labels == receiver_output.argmax(dim=1)
+    ).float()
+
+    return total_loss, {
+        "acc": acc.mean(),
+        "edge_penalty": edge_loss,
+        "kl_loss": kl_loss
+    }
+
+def loss_recon_KL(
+    _sender_input, message, _receiver_input,
+    receiver_output, labels, aux,
+):
+
+    top_edge = message[:, 0, :].sum(dim=1)
+    bottom_edge = message[:, -1, :].sum(dim=1)
+    left_edge = message[:, :, 0].sum(dim=1)
+    right_edge = message[:, :, -1].sum(dim=1)
+
+    edge_penalty = (top_edge + bottom_edge + left_edge + right_edge)
+
+    edge_coeff = 0.0001
+    edge_penalty = edge_penalty.mean()
+    edge_loss = edge_penalty * edge_coeff
+
+    hinge_loss = F.multi_margin_loss(
+        receiver_output,
+        labels.long(),
+    )
+
+    mu = aux["mu"]
+    logvar = aux["log_var"]
+
+    kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    kl_coeff = 0.1
 
     # Combined loss
     total_loss = (
@@ -288,7 +337,7 @@ def get_game(config):
         game = core.SymbolGameGS(sender, receiver, loss_nll)
     elif config['mode'] == "ds":
         sender = DiffRasterWrapper(sender, config['canvas_size'], paths=config['n_strokes'])
-        game = core.SymbolGameGS(sender, receiver, loss_hinge_KL)
+        game = core.SymbolGameGS(sender, receiver, loss_recon_KL)
     else:
         raise RuntimeError(f"Unknown training mode: {opts.mode}")
 

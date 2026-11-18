@@ -188,7 +188,8 @@ class SymbolGameGS(nn.Module):
             sender_input, message, receiver_input, receiver_output, target_position, loss_aux
         )
 
-        aux_info["sender_entropy"] = sender_aux["sender_entropy"]
+        aux_info["sender_log_prob"] = sender_aux["sender_log_prob"]
+        aux_info["sender_mu"] = sender_aux["sender_mu"]
 
         logging_strategy = (
             self.train_logging_strategy if self.training else self.test_logging_strategy

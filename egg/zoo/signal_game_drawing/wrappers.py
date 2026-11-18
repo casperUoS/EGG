@@ -248,7 +248,7 @@ class BezierReinforceWrapper(nn.Module):
         # dim = mu.size(-1)
         # scale_tril = torch.eye(dim, device=mu.device) * self.noise_std
 
-        distr = Normal(loc=mu, scale=0.01)
+        distr = Normal(loc=mu, scale=0.001)
         distr = Independent(distr, 1)
 
         entropy = distr.entropy()
