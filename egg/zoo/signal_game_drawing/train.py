@@ -459,7 +459,6 @@ if __name__ == "__main__":
             # edge_penalty = interaction.edge_penalty.detach().cpu() if not None else 0.0
             edge_penalty = 0.0
             # 3. Plot and save one sample
-            import matplotlib.pyplot as plt
 
             # Pick the first image in the batch
             sample = sketches[0]
